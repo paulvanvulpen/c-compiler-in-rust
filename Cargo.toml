@@ -1,6 +1,9 @@
 [package]
-name="hello_cargo"
+name="c_compiler"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.5.34", features = ["derive"] }
+regex = "1.11.1"
+unicode-segmentation = "1.12.0"
