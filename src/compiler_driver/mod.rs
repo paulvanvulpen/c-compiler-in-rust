@@ -2,8 +2,37 @@ mod compiler;
 
 use std::io;
 use std::process::Command;
+use crate::Args;
 
-pub fn run_preprocessor(input_file_path: &std::path::PathBuf) -> io::Result<()>
+pub fn compile(args : &Args) -> io::Result<()>
+{
+	let project_root = env!("CARGO_MANIFEST_DIR");
+	if args.code_emission.is_some()
+	{
+		let input_file_path = std::path::Path::new(project_root).join(&args.code_emission.as_ref().unwrap().as_str());
+		return emit_assembly(&args, &input_file_path);
+	}
+
+	let input_file_path = std::path::Path::new(project_root).join(&args.source_file.as_ref().unwrap().as_str());
+	emit_binary(&args, &input_file_path)
+}
+
+pub fn emit_binary(args : &Args, input_file_path: &std::path::PathBuf) -> io::Result<()>
+{
+	run_preprocessor(&input_file_path).expect("Failed to run the preprocessor");
+	run_compiler(&args, &input_file_path).expect("Failed to compile the source file");
+	run_assemble_and_link(&input_file_path).expect("Failed to run the assembler and linker");
+	Ok(())
+}
+
+pub fn emit_assembly(args : &Args, input_file_path: &std::path::PathBuf) -> io::Result<()>
+{
+	run_preprocessor(&input_file_path).expect("Failed to run the preprocessor");
+	run_compiler(&args, &input_file_path).expect("Failed to compile the source file");
+	Ok(())
+}
+
+fn run_preprocessor(input_file_path: &std::path::PathBuf) -> io::Result<()>
 {
 	assert_eq!("c", input_file_path.extension().unwrap());
 
@@ -23,16 +52,33 @@ pub fn run_preprocessor(input_file_path: &std::path::PathBuf) -> io::Result<()>
 	Ok(())
 }
 
-pub fn run_compiler(input_file_path: &std::path::PathBuf) -> io::Result<()>
+fn run_compiler(args : &Args, input_file_path: &std::path::PathBuf) -> io::Result<()>
 {
 	compiler::lexer(input_file_path).expect("Lexer failed");
+
+	if args.lex
+	{
+		return Ok(());
+	}
 	compiler::parser().expect("Parser failed");
+
+	if args.parse
+	{
+		return Ok(());
+	}
+
 	compiler::assembly_generator().expect("Assembly generator failed");
+
+	if args.codegen
+	{
+		return Ok(());
+	}
+
 	compiler::code_emission().expect("Code emission failed");
 	Ok(())
 }
 
-pub fn run_assemble_and_link(input_file_path: &std::path::PathBuf) -> io::Result<()>
+fn run_assemble_and_link(input_file_path: &std::path::PathBuf) -> io::Result<()>
 {
 	let assembly_file_name = input_file_path.with_extension("s");
 	let status = Command::new("gcc")

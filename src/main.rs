@@ -7,8 +7,13 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-	/// The main source file to compile
-	source_file: String,
+	/// The main source file to compile and emit an executable
+	#[arg(required_unless_present = "code_emission")]
+	source_file: Option<String>,
+
+	/// an alternative mode to compile and emit an assembly file
+	#[arg(short = 'S', conflicts_with = "source_file")]
+	code_emission: Option<String>,
 
 	/// Run the lexer, but stop before parsing
 	#[arg(long)]
@@ -26,11 +31,7 @@ struct Args {
 fn main() -> io::Result<()>
 {
 	let args = Args::parse();
-	let project_root = env!("CARGO_MANIFEST_DIR");
-	let input_file_path = std::path::Path::new(project_root).join(&args.source_file);
+	compiler_driver::compile(&args).expect("Failed to compile");
 
-	compiler_driver::run_preprocessor(&input_file_path).expect("Failed to run the preprocessor");
-	compiler_driver::run_compiler(&input_file_path).expect("Failed to compile the source file");
-	compiler_driver::run_assemble_and_link(&input_file_path).expect("Failed to run the assembler and linker");
 	Ok(())
 }
