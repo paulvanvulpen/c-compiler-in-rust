@@ -1,6 +1,4 @@
 mod compiler_driver;
-
-use std::io;
 use clap::Parser;
 
 /// A rust-based C compiler.
@@ -28,8 +26,16 @@ struct Args {
 	codegen: bool,
 }
 
-fn main() -> io::Result<()>
+fn main()
 {
 	let args = Args::parse();
-	compiler_driver::compile(&args)
+	match compiler_driver::compile(&args)
+	{
+		Ok(()) => {},
+		Err(err) =>
+		{
+			eprintln!("{}", err);
+			std::process::exit(1);
+		}
+	}
 }

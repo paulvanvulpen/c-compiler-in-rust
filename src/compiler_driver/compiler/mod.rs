@@ -13,7 +13,8 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 	{
 		return Ok(());
 	}
-	parser::run_parser().expect("Parser failed");
+
+	parser::run_parser()?;
 
 	if args.parse
 	{

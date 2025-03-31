@@ -1,4 +1,6 @@
+use std::io;
+
 pub fn run_parser() -> std::io::Result<()>
 {
-	Ok(())
+	Err(io::Error::new(io::ErrorKind::NotFound,format!("Parser is not implemented")))
 }

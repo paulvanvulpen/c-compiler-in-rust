@@ -19,14 +19,14 @@ pub fn compile(args : &Args) -> io::Result<()>
 fn emit_binary(args : &Args, input_file_path: &std::path::Path) -> io::Result<()>
 {
 	run_preprocessor(&input_file_path).expect("Failed to run the preprocessor");
-	compiler::run_compiler(&args, &input_file_path)?;
+	compiler::run_compiler(&args, &input_file_path.with_extension("i"))?;
 	run_assemble_and_link(&input_file_path)
 }
 
 fn emit_assembly(args : &Args, input_file_path: &std::path::Path) -> io::Result<()>
 {
 	run_preprocessor(&input_file_path)?;
-	compiler::run_compiler(&args, &input_file_path)
+	compiler::run_compiler(&args, &input_file_path.with_extension("i"))
 }
 
 fn run_preprocessor(input_file_path: &std::path::Path) -> io::Result<()>
@@ -41,7 +41,7 @@ fn run_preprocessor(input_file_path: &std::path::Path) -> io::Result<()>
 	// Check if command succeeded
 	if status.success() {
 		println!("Preprocessing successful: {}", pre_processor_output_file_name.to_str().unwrap());
-		std::fs::remove_file(pre_processor_output_file_name).expect("Failed to remove the preprocessing file despite that gcc reports it created it successfully");
+		//std::fs::remove_file(pre_processor_output_file_name).expect("Failed to remove the preprocessing file despite that gcc reports it created it successfully");
 	} else {
 		eprintln!("Error: Preprocessing failed");
 	}
