@@ -6,31 +6,30 @@ use crate::Args;
 
 pub fn compile(args : &Args) -> io::Result<()>
 {
-	let project_root = env!("CARGO_MANIFEST_DIR");
 	if args.code_emission.is_some()
 	{
-		let input_file_path = std::path::Path::new(project_root).join(&args.code_emission.as_ref().unwrap().as_str());
+		let input_file_path = std::path::Path::new(args.code_emission.as_ref().unwrap().as_str());
 		return emit_assembly(&args, &input_file_path)
 	}
 
-	let input_file_path = std::path::Path::new(project_root).join(&args.source_file.as_ref().unwrap().as_str());
+	let input_file_path = std::path::Path::new(args.source_file.as_ref().unwrap().as_str());
 	emit_binary(&args, &input_file_path)
 }
 
-fn emit_binary(args : &Args, input_file_path: &std::path::PathBuf) -> io::Result<()>
+fn emit_binary(args : &Args, input_file_path: &std::path::Path) -> io::Result<()>
 {
 	run_preprocessor(&input_file_path).expect("Failed to run the preprocessor");
 	compiler::run_compiler(&args, &input_file_path)?;
 	run_assemble_and_link(&input_file_path)
 }
 
-fn emit_assembly(args : &Args, input_file_path: &std::path::PathBuf) -> io::Result<()>
+fn emit_assembly(args : &Args, input_file_path: &std::path::Path) -> io::Result<()>
 {
 	run_preprocessor(&input_file_path)?;
 	compiler::run_compiler(&args, &input_file_path)
 }
 
-fn run_preprocessor(input_file_path: &std::path::PathBuf) -> io::Result<()>
+fn run_preprocessor(input_file_path: &std::path::Path) -> io::Result<()>
 {
 	assert_eq!("c", input_file_path.extension().unwrap());
 
@@ -50,7 +49,7 @@ fn run_preprocessor(input_file_path: &std::path::PathBuf) -> io::Result<()>
 	Ok(())
 }
 
-fn run_assemble_and_link(input_file_path: &std::path::PathBuf) -> io::Result<()>
+fn run_assemble_and_link(input_file_path: &std::path::Path) -> io::Result<()>
 {
 	let assembly_file_name = input_file_path.with_extension("s");
 	let status = Command::new("gcc")
