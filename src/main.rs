@@ -31,7 +31,5 @@ struct Args {
 fn main() -> io::Result<()>
 {
 	let args = Args::parse();
-	compiler_driver::compile(&args).expect("Failed to compile");
-
-	Ok(())
+	compiler_driver::compile(&args)
 }

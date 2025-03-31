@@ -7,7 +7,7 @@ mod code_emission;
 
 pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &std::path::PathBuf) -> std::io::Result<()>
 {
-	lexer::run_lexer(input_file_path).expect("Lexer failed");
+	lexer::run_lexer(input_file_path)?;
 
 	if args.lex
 	{

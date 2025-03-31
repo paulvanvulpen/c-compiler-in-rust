@@ -10,7 +10,7 @@ pub fn compile(args : &Args) -> io::Result<()>
 	if args.code_emission.is_some()
 	{
 		let input_file_path = std::path::Path::new(project_root).join(&args.code_emission.as_ref().unwrap().as_str());
-		return emit_assembly(&args, &input_file_path);
+		return emit_assembly(&args, &input_file_path)
 	}
 
 	let input_file_path = std::path::Path::new(project_root).join(&args.source_file.as_ref().unwrap().as_str());
@@ -20,16 +20,14 @@ pub fn compile(args : &Args) -> io::Result<()>
 fn emit_binary(args : &Args, input_file_path: &std::path::PathBuf) -> io::Result<()>
 {
 	run_preprocessor(&input_file_path).expect("Failed to run the preprocessor");
-	compiler::run_compiler(&args, &input_file_path).expect("Failed to compile the source file");
-	run_assemble_and_link(&input_file_path).expect("Failed to run the assembler and linker");
-	Ok(())
+	compiler::run_compiler(&args, &input_file_path)?;
+	run_assemble_and_link(&input_file_path)
 }
 
 fn emit_assembly(args : &Args, input_file_path: &std::path::PathBuf) -> io::Result<()>
 {
-	run_preprocessor(&input_file_path).expect("Failed to run the preprocessor");
-	compiler::run_compiler(&args, &input_file_path).expect("Failed to compile the source file");
-	Ok(())
+	run_preprocessor(&input_file_path)?;
+	compiler::run_compiler(&args, &input_file_path)
 }
 
 fn run_preprocessor(input_file_path: &std::path::PathBuf) -> io::Result<()>
