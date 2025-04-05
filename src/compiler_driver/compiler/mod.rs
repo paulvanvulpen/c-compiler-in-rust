@@ -1,4 +1,5 @@
 use crate::Args;
+use crate::compiler_driver::compiler::lexer::Token;
 
 mod lexer;
 mod parser;
@@ -7,14 +8,15 @@ mod code_emission;
 
 pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &std::path::Path) -> std::io::Result<()>
 {
-	lexer::run_lexer(input_file_path)?;
+	let mut lexer_tokens: Vec<Token> = vec![];
+	lexer::run_lexer(input_file_path, &mut lexer_tokens)?;
 
 	if args.lex
 	{
 		return Ok(());
 	}
 
-	parser::run_parser()?;
+	let ast = parser::run_parser(&lexer_tokens[..])?;
 
 	if args.parse
 	{

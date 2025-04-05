@@ -3,10 +3,10 @@ use regex::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 use crate::compiler_driver::compiler::lexer::Token::{TokenCloseBrace, TokenCloseParenthesis, TokenConstant, TokenIdentifier, TokenInt, TokenOpenBrace, TokenOpenParenthesis, TokenReturn, TokenSemicolon, TokenVoid};
 
-enum Token
+pub enum Token
 {
 	TokenIdentifier(String),
-	TokenConstant(String),
+	TokenConstant(usize),
 	TokenInt,
 	TokenVoid,
 	TokenReturn,
@@ -17,7 +17,7 @@ enum Token
 	TokenSemicolon
 }
 
-pub fn run_lexer(input_file_path: &std::path::Path) -> io::Result<()>
+pub fn run_lexer(input_file_path: &std::path::Path, out_lexer_tokens: &mut Vec<Token>) -> io::Result<()>
 {
 	let file = std::fs::File::open(input_file_path).expect("Failed to open input file");
 	let reader = io::BufReader::new(file);
@@ -25,13 +25,9 @@ pub fn run_lexer(input_file_path: &std::path::Path) -> io::Result<()>
 	let constant = Regex::new(r"\d+\b").expect("this doesn't define a regex");
 	let whitespace = Regex::new(r"\s+").expect("this doesn't define a regex");
 
-	let mut tokens: Vec<Token> = vec![];
-
 	for line in reader.lines()
 	{
 		let line = line.expect("Failed to read line");
-		// let mut last_token_is_comment = false;
-
 		for token in line.split_word_bounds()
 		{
 			if whitespace.is_match(&token)
@@ -50,11 +46,11 @@ pub fn run_lexer(input_file_path: &std::path::Path) -> io::Result<()>
 				"}" => Some(TokenCloseBrace),
 				";" => Some(TokenSemicolon),
 				_ if identifier.is_match(&token) => { Some(TokenIdentifier(token.to_string())) }
-				_ if constant.is_match(&token) => { Some(TokenConstant(token.to_string())) }
+				_ if constant.is_match(&token) => { Some(TokenConstant(token.parse::<usize>().unwrap())) }
 				_ => None
 			};
 
-			tokens.push(
+			out_lexer_tokens.push(
 			found_token.ok_or_else(|| {
 					io::Error::new(
 						io::ErrorKind::InvalidData,
@@ -64,12 +60,6 @@ pub fn run_lexer(input_file_path: &std::path::Path) -> io::Result<()>
 			);
 		}
 	}
-
-	// This should be work for the parser
-	// if parenthesis_count > 0 { return Err(Error::new(io::ErrorKind::InvalidData,format!("Missing close parenthesis ')'")))}
-	// if parenthesis_count < 0 { return Err(Error::new(io::ErrorKind::InvalidData,format!("Missing open parenthesis '('")))}
-	// if brace_count > 0 { return Err(Error::new(io::ErrorKind::InvalidData,format!("Missing close brace '}}'")))}
-	// if brace_count < 0 { return Err(Error::new(io::ErrorKind::InvalidData,format!("Missing open brace '{{'")))}
 
 	Ok(())
 }
