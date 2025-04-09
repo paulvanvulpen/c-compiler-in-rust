@@ -1,6 +1,6 @@
 use std::io;
 use std::mem::discriminant;
-use crate::compiler_driver::compiler::lexer::Token;
+use super::lexer::Token;
 
 // Implementation AST Nodes in Zyphyr Abstract Syntax Description Language (ADSL)
 // program = Program(function_definition)

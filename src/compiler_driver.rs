@@ -6,14 +6,20 @@ use crate::Args;
 
 pub fn compile(args : &Args) -> io::Result<()>
 {
-	if args.code_emission.is_some()
+	match (&args.code_emission, &args.source_file)
 	{
-		let input_file_path = std::path::Path::new(args.code_emission.as_ref().unwrap().as_str());
-		return emit_assembly(&args, &input_file_path)
+		(Some(code_path), _) => {
+			let input_file_path = std::path::Path::new(code_path);
+			emit_assembly(args, input_file_path)
+		}
+		(None, Some(source_path)) => {
+			let input_file_path = std::path::Path::new(source_path);
+			emit_binary(args, input_file_path)
+		}
+		(None, None) => {
+			Err(io::Error::new(io::ErrorKind::InvalidInput, "No input file provided"))
+		}
 	}
-
-	let input_file_path = std::path::Path::new(args.source_file.as_ref().unwrap().as_str());
-	emit_binary(&args, &input_file_path)
 }
 
 fn emit_binary(args : &Args, input_file_path: &std::path::Path) -> io::Result<()>

@@ -1,7 +1,6 @@
 use std::io::{self, BufRead};
 use regex::Regex;
 use unicode_segmentation::UnicodeSegmentation;
-use crate::compiler_driver::compiler::lexer::Token::{TokenCloseBrace, TokenCloseParenthesis, TokenConstant, TokenIdentifier, TokenInt, TokenOpenBrace, TokenOpenParenthesis, TokenReturn, TokenSemicolon, TokenVoid};
 
 pub enum Token
 {
@@ -37,16 +36,16 @@ pub fn run_lexer(input_file_path: &std::path::Path, out_lexer_tokens: &mut Vec<T
 
 			let found_token: Option<Token> = match token
 			{
-				"int" => Some(TokenInt),
-				"void" => Some(TokenVoid),
-				"return"=> Some(TokenReturn),
-				"("=> Some(TokenOpenParenthesis),
-				")"=> Some(TokenCloseParenthesis),
-				"{" => Some(TokenOpenBrace),
-				"}" => Some(TokenCloseBrace),
-				";" => Some(TokenSemicolon),
-				_ if identifier.is_match(&token) => { Some(TokenIdentifier(token.to_string())) }
-				_ if constant.is_match(&token) => { Some(TokenConstant(token.parse::<usize>().unwrap())) }
+				"int" => Some(Token::TokenInt),
+				"void" => Some(Token::TokenVoid),
+				"return"=> Some(Token::TokenReturn),
+				"("=> Some(Token::TokenOpenParenthesis),
+				")"=> Some(Token::TokenCloseParenthesis),
+				"{" => Some(Token::TokenOpenBrace),
+				"}" => Some(Token::TokenCloseBrace),
+				";" => Some(Token::TokenSemicolon),
+				_ if identifier.is_match(&token) => { Some(Token::TokenIdentifier(token.to_string())) }
+				_ if constant.is_match(&token) => { Some(Token::TokenConstant(token.parse::<usize>().unwrap())) }
 				_ => None
 			};
 
