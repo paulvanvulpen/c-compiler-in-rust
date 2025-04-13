@@ -1,4 +1,5 @@
 use crate::Args;
+use parser::NodeVisualizer;
 
 pub mod lexer;
 mod parser;
@@ -16,6 +17,7 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 	}
 
 	let ast = parser::run_parser(&lexer_tokens[..])?;
+	println!("{}", ast.visualize(0).as_str());
 
 	if args.parse
 	{

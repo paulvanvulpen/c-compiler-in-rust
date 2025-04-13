@@ -2,6 +2,10 @@ use std::io;
 use std::mem::discriminant;
 use super::lexer::Token;
 
+pub trait NodeVisualizer {
+    fn visualize(&self, depth : u8) -> String;
+}
+
 // Implementation AST Nodes in Zyphyr Abstract Syntax Description Language (ADSL)
 // program = Program(function_definition)
 // function_definition = Function(identifier name, statement body)
@@ -12,6 +16,19 @@ pub enum AbstractSyntaxTree
 	Program(Program),
 }
 
+impl NodeVisualizer for AbstractSyntaxTree
+{
+	fn visualize(&self, depth : u8) -> String
+	{
+		if let AbstractSyntaxTree::Program(program) = self
+		{
+			return program.visualize(0);
+		}
+
+		String::new()
+	}
+}
+
 // Comments on the enums in Backus-Naur form (EBNF)
 
 // <program>
@@ -20,10 +37,44 @@ pub enum Program
 	Program(FunctionDefinition)
 }
 
+impl NodeVisualizer for Program
+{
+	fn visualize(&self, depth : u8) -> String
+	{
+		if let Program::Program(function_definition) = self
+		{
+			return String::from(format!(
+			"Program(\n\
+			{}\n\
+			)", function_definition.visualize(depth + 1)))
+		}
+
+		String::new()
+	}
+}
+
 // <function>
 pub enum FunctionDefinition
 {
 	Function{ identifier : String, body : Statement }
+}
+
+impl NodeVisualizer for FunctionDefinition
+{
+	fn visualize(&self, depth : u8) -> String
+	{
+		if let FunctionDefinition::Function{identifier, body} = self
+		{
+			let prefix = "    ".repeat(depth as usize);
+			return format!(
+				"{prefix}Function(\n\
+				{prefix}    name={identifier}\n\
+				{prefix}    body={}", body.visualize(depth + 1)
+			);
+		}
+
+		String::new()
+	}
 }
 
 // <statement>
@@ -32,10 +83,42 @@ pub enum Statement
 	Return(Expression),
 }
 
+impl NodeVisualizer for Statement
+{
+	fn visualize(&self, depth : u8) -> String
+	{
+		if let Statement::Return(expression) = self
+		{
+			let prefix = "    ".repeat(depth as usize);
+			return format!(
+				"Return(\n\
+				{}\n\
+				{prefix})", expression.visualize(depth + 1)
+			);
+		}
+
+		String::new()
+	}
+}
+
 // <exp>
 pub enum Expression
 {
 	Constant(usize)
+}
+
+impl NodeVisualizer for Expression
+{
+	fn visualize(&self, depth : u8) -> String
+	{
+		if let Expression::Constant(value) = self
+		{
+			let prefix = "    ".repeat(depth as usize);
+			return format!("{prefix}Constant({value})")
+		}
+
+		String::new()
+	}
 }
 
 // <program> ::= <function>
