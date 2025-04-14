@@ -33,6 +33,6 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 		return Ok(());
 	}
 
-	code_emission::run_code_emission().expect("Code emission failed");
+	code_emission::run_code_emission(assembly_ast, input_file_path).expect("Code emission failed");
 	Ok(())
 }
