@@ -1,10 +1,7 @@
 use std::io;
 use std::mem::discriminant;
 use super::lexer::Token;
-
-pub trait NodeVisualizer {
-    fn visualize(&self, depth : u8) -> String;
-}
+use super::node;
 
 // Implementation AST Nodes in Zyphyr Abstract Syntax Description Language (ADSL)
 // program = Program(function_definition)
@@ -16,7 +13,7 @@ pub enum AbstractSyntaxTree
 	Program(Program),
 }
 
-impl NodeVisualizer for AbstractSyntaxTree
+impl node::Visualizer for AbstractSyntaxTree
 {
 	fn visualize(&self, depth : u8) -> String
 	{
@@ -37,7 +34,7 @@ pub enum Program
 	Program(FunctionDefinition)
 }
 
-impl NodeVisualizer for Program
+impl node::Visualizer for Program
 {
 	fn visualize(&self, depth : u8) -> String
 	{
@@ -59,7 +56,7 @@ pub enum FunctionDefinition
 	Function{ identifier : String, body : Statement }
 }
 
-impl NodeVisualizer for FunctionDefinition
+impl node::Visualizer for FunctionDefinition
 {
 	fn visualize(&self, depth : u8) -> String
 	{
@@ -69,7 +66,8 @@ impl NodeVisualizer for FunctionDefinition
 			return format!(
 				"{prefix}Function(\n\
 				{prefix}    name={identifier}\n\
-				{prefix}    body={}", body.visualize(depth + 1)
+				{prefix}    body={}\n\
+				{prefix})", body.visualize(depth + 1)
 			);
 		}
 
@@ -83,7 +81,7 @@ pub enum Statement
 	Return(Expression),
 }
 
-impl NodeVisualizer for Statement
+impl node::Visualizer for Statement
 {
 	fn visualize(&self, depth : u8) -> String
 	{
@@ -107,7 +105,7 @@ pub enum Expression
 	Constant(usize)
 }
 
-impl NodeVisualizer for Expression
+impl node::Visualizer for Expression
 {
 	fn visualize(&self, depth : u8) -> String
 	{

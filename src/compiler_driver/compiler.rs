@@ -1,10 +1,11 @@
 use crate::Args;
-use parser::NodeVisualizer;
+use node::Visualizer;
 
 pub mod lexer;
 mod parser;
 mod assembly_generator;
 mod code_emission;
+mod node;
 
 pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &std::path::Path) -> std::io::Result<()>
 {
@@ -16,7 +17,7 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 		return Ok(());
 	}
 
-	let ast = parser::run_parser(&lexer_tokens[..])?;
+	let ast = parser::run_parser(&lexer_tokens)?;
 	println!("{}", ast.visualize(0).as_str());
 
 	if args.parse
@@ -24,7 +25,8 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 		return Ok(());
 	}
 
-	assembly_generator::run_assembly_generator().expect("Assembly generator failed");
+	let assembly_ast = assembly_generator::run_assembly_generator(ast).expect("Assembly generator failed");
+	println!("{}", assembly_ast.visualize(0).as_str());
 
 	if args.codegen
 	{
