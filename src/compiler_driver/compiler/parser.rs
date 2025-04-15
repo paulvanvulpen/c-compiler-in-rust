@@ -90,7 +90,7 @@ impl node::Visualizer for Statement
 			let prefix = "    ".repeat(depth as usize);
 			return format!(
 				"Return(\n\
-				{}\n\
+				{prefix}    {}\n\
 				{prefix})", expression.visualize(depth + 1)
 			);
 		}
@@ -102,26 +102,44 @@ impl node::Visualizer for Statement
 // <exp>
 pub enum Expression
 {
-	Constant(usize)
+	Constant(usize),
+	Unary(UnaryOperator, Box<Expression>),
 }
 
-impl node::Visualizer for Expression
-{
-	fn visualize(&self, depth : u8) -> String
-	{
-		if let Expression::Constant(value) = self
-		{
-			let prefix = "    ".repeat(depth as usize);
-			return format!("{prefix}Constant({value})")
+impl node::Visualizer for Expression {
+	fn visualize(&self, depth : u8) -> String {
+		match self {
+			Expression::Constant(value) => {
+				format!("Constant({value})")
+			},
+			Expression::Unary(unary_operator, boxed_expression) => {
+				format!("{}{}", unary_operator.visualize(depth + 1), boxed_expression.visualize(depth + 1))
+			}
+			_ => String::new()
 		}
+	}
+}
 
-		String::new()
+// <unop>
+pub enum UnaryOperator
+{
+	Complement,
+	Negate
+}
+
+impl node::Visualizer for UnaryOperator {
+	fn visualize(&self, depth: u8) -> String
+	{
+		match self {
+			UnaryOperator::Complement => String::from("~"),
+			UnaryOperator::Negate => String::from("-"),
+			_ => String::from("")
+		}
 	}
 }
 
 // <program> ::= <function>
-fn parse_program(lexer_tokens : &[Token]) -> io::Result<Program>
-{
+fn parse_program(lexer_tokens : &[Token]) -> io::Result<Program> {
 	match parse_function(lexer_tokens)
 	{
 		Ok(function_definition) => Ok(Program::Program(function_definition)),
@@ -130,8 +148,7 @@ fn parse_program(lexer_tokens : &[Token]) -> io::Result<Program>
 }
 
 // <function> ::= "int" <identifier> "(" "void" ")" "{" <statement> "}"
-fn parse_function(lexer_tokens : &[Token]) -> io::Result<FunctionDefinition>
-{
+fn parse_function(lexer_tokens : &[Token]) -> io::Result<FunctionDefinition> {
 	let lexer_tokens = expect(Token::TokenInt, lexer_tokens)?;
 	let (identifier, lexer_tokens) = parse_identifier(lexer_tokens)?;
 	let lexer_tokens = expect(Token::TokenOpenParenthesis, lexer_tokens)?;
@@ -139,7 +156,6 @@ fn parse_function(lexer_tokens : &[Token]) -> io::Result<FunctionDefinition>
 	let lexer_tokens = expect(Token::TokenCloseParenthesis, lexer_tokens)?;
 	let lexer_tokens = expect(Token::TokenOpenBrace, lexer_tokens)?;
 	let (body, lexer_tokens) = parse_statement(lexer_tokens)?;
-
 	let lexer_tokens = expect(Token::TokenCloseBrace, lexer_tokens)?;
 
 	match lexer_tokens
@@ -150,8 +166,7 @@ fn parse_function(lexer_tokens : &[Token]) -> io::Result<FunctionDefinition>
 }
 
 // <identifier> ::= ? An identifier token ?
-fn parse_identifier(lexer_tokens : &[Token]) -> io::Result<(String, &[Token])>
-{
+fn parse_identifier(lexer_tokens : &[Token]) -> io::Result<(String, &[Token])> {
 	match &lexer_tokens[0]
 	{
 		Token::TokenIdentifier(identifier) => Ok((identifier.clone(), &lexer_tokens[1..])),
@@ -160,28 +175,42 @@ fn parse_identifier(lexer_tokens : &[Token]) -> io::Result<(String, &[Token])>
 }
 
 // <statement> ::= "return" <exp> ";"
-fn parse_statement(lexer_tokens : &[Token]) -> io::Result<(Statement, &[Token])>
-{
+fn parse_statement(lexer_tokens : &[Token]) -> io::Result<(Statement, &[Token])> {
 	let lexer_tokens = expect(Token::TokenReturn, lexer_tokens)?;
 	let (exp, lexer_tokens) = parse_exp(lexer_tokens)?;
-
 	let lexer_tokens = expect(Token::TokenSemicolon, lexer_tokens)?;
 	Ok((Statement::Return(exp), lexer_tokens))
 }
 
-// <exp> ::= <int>
+// <exp> ::= <int> | <unop> <exp> | "(" <exp> ")"
 // <int> ::= ? A constant token ?
-fn parse_exp(lexer_tokens : &[Token]) -> io::Result<(Expression, &[Token])>
-{
-	match &lexer_tokens[0]
-	{
+fn parse_exp(lexer_tokens : &[Token]) -> io::Result<(Expression, &[Token])> {
+	match &lexer_tokens[0] {
+		Token::TokenTilde | Token::TokenHyphen => {
+			let (unary_op, lexer_tokens) = parse_unary_operator(&lexer_tokens)?;
+			let (expr, lexer_tokens) = parse_exp(lexer_tokens)?;
+			Ok((Expression::Unary(unary_op, Box::new(expr)), lexer_tokens))
+		}
 		Token::TokenConstant(constant) => Ok((Expression::Constant(*constant), &lexer_tokens[1..])),
+		Token::TokenOpenParenthesis => {
+			let lexer_tokens = expect(Token::TokenOpenParenthesis, lexer_tokens)?;
+			let (exp, lexer_tokens) = parse_exp(lexer_tokens)?;
+			let lexer_tokens = expect(Token::TokenCloseParenthesis, lexer_tokens)?;
+			Ok((exp, lexer_tokens))
+		}
 		_ => Err(fail())
 	}
 }
 
-fn expect(expected: Token, lexer_tokens: &[Token]) -> io::Result<&[Token]>
-{
+fn parse_unary_operator(lexer_tokens : &[Token]) -> io::Result<(UnaryOperator, &[Token])> {
+	match &lexer_tokens[0] {
+		Token::TokenHyphen => Ok((UnaryOperator::Negate, &lexer_tokens[1..])),
+		Token::TokenTilde => Ok((UnaryOperator::Complement, &lexer_tokens[1..])),
+		_ => Err(fail())
+	}
+}
+
+fn expect(expected: Token, lexer_tokens: &[Token]) -> io::Result<&[Token]> {
 	match lexer_tokens
 	{
 		t if t.is_empty() || (discriminant(&expected) != discriminant(&lexer_tokens[0])) => Err(fail()),
@@ -194,24 +223,7 @@ fn fail() -> io::Error
 	io::Error::new(io::ErrorKind::InvalidData,"Syntax error")
 }
 
-pub fn run_parser(lexer_tokens : &[Token]) -> io::Result<AbstractSyntaxTree>
-{
+pub fn run_parser(lexer_tokens : &[Token]) -> io::Result<AbstractSyntaxTree> {
 	let program = parse_program(lexer_tokens)?;
 	Ok(AbstractSyntaxTree::Program(program))
-
-	// Ok(
-	// 	AST::Program(
-	// 		Program::Program(
-	// 			FunctionDefinition::Function
-	// 			{
-	// 				identifier : String::from("main"),
-	// 				body: Statement::Return(
-	// 					Expression::Constant(
-	// 						2
-	// 					)
-	// 				)
-	// 			}
-	// 		)
-	// 	)
-	// )
 }
