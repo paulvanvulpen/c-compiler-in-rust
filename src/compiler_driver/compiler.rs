@@ -6,6 +6,7 @@ mod parser;
 mod assembly_generator;
 mod code_emission;
 mod node;
+mod tacky;
 
 pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &std::path::Path) -> std::io::Result<()>
 {
@@ -25,7 +26,13 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 		return Ok(());
 	}
 
-	let assembly_ast = assembly_generator::run_assembly_generator(ast).expect("Assembly generator failed");
+	let tacky_ast = tacky::run_tacky_generator(ast)?;
+	if args.tacky
+	{
+		return Ok(());
+	}
+
+/*	let assembly_ast = assembly_generator::run_assembly_generator(ast).expect("Assembly generator failed");
 	println!("{}", assembly_ast.visualize(0).as_str());
 
 	if args.codegen
@@ -34,5 +41,6 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 	}
 
 	code_emission::run_code_emission(assembly_ast, input_file_path).expect("Code emission failed");
+*/
 	Ok(())
 }

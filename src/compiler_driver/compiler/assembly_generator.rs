@@ -125,6 +125,7 @@ impl node::Visualizer for Register
 fn convert_expression(expression : parser::Expression) -> Operand {
     match expression {
         parser::Expression::Constant(constant) => Operand::Immediate(constant),
+		_ => panic!()
     }
 }
 
@@ -162,8 +163,7 @@ fn convert_ast(ast : parser::AbstractSyntaxTree) -> AssemblyAbstractSyntaxTree {
 		}
 	}
 }
-pub fn run_assembly_generator(ast: parser::AbstractSyntaxTree) -> std::io::Result<AssemblyAbstractSyntaxTree>
-{
+pub fn run_assembly_generator(ast: parser::AbstractSyntaxTree) -> std::io::Result<AssemblyAbstractSyntaxTree> {
 	let assembly_ast = convert_ast(ast);
 	Ok(assembly_ast)
 }
