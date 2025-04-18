@@ -182,6 +182,7 @@ fn convert_statement(statement : parser::Statement) -> Vec<Instruction> {
 				Some(instruction_ref) => get_destination(instruction_ref),
 				None => panic!("instruction is missing a valid destination"),
 			};
+			instructions.remove(0);
 			instructions.push(Instruction::Return(final_destination));
 			instructions
 		}
