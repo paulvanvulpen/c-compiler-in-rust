@@ -6,12 +6,10 @@ pub enum AssemblyAbstractSyntaxTree
 	Program(Program),
 }
 
-impl node::Visualizer for AssemblyAbstractSyntaxTree
-{
+impl node::Visualizer for AssemblyAbstractSyntaxTree  {
 	fn visualize(&self, depth : u8) -> String
 	{
-		if let AssemblyAbstractSyntaxTree::Program(program) = self
-		{
+		if let AssemblyAbstractSyntaxTree::Program(program) = self {
 			return program.visualize(0);
 		}
 

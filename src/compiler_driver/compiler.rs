@@ -19,7 +19,7 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 	}
 
 	let ast = parser::run_parser(&lexer_tokens)?;
-	println!("{}", ast.visualize(0).as_str());
+	println!("AST:\n{}", ast.visualize(0).as_str());
 
 	if args.parse
 	{
@@ -27,6 +27,7 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 	}
 
 	let tacky_ast = tacky::run_tacky_generator(ast)?;
+	println!("TACKY:\n{}", tacky_ast.visualize(0).as_str());
 	if args.tacky
 	{
 		return Ok(());

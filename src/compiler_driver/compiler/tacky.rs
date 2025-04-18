@@ -1,4 +1,4 @@
-use super::parser;
+use super::{node, parser};
 
 // program = Program (function_definition)
 // function_definition = Function(identifier, instruction* body)
@@ -9,12 +9,63 @@ pub enum TackyAbstractSyntaxTree {
 	Program(Program),
 }
 
+impl node::Visualizer for TackyAbstractSyntaxTree {
+	fn visualize(&self, depth: u8) -> String {
+		if let TackyAbstractSyntaxTree::Program(program) = self {
+			return program.visualize(0);
+		}
+
+		String::new()
+	}
+}
+
 enum Program {
 	Program(FunctionDefinition),
 }
 
+impl node::Visualizer for Program
+{
+	fn visualize(&self, depth : u8) -> String
+	{
+		if let Program::Program(function_definition) = self
+		{
+			return String::from(format!(
+			"Program(\n\
+			{}\n\
+			)", function_definition.visualize(depth + 1)))
+		}
+
+		String::new()
+	}
+}
+
 enum FunctionDefinition {
 	Function{ identifier : String, instructions : Vec<Instruction>},
+}
+
+impl node::Visualizer for FunctionDefinition
+{
+	fn visualize(&self, depth : u8) -> String
+	{
+		if let FunctionDefinition::Function{identifier, instructions} = self
+		{
+			let prefix = "    ".repeat(depth as usize);
+			let instructions_str = instructions.iter()
+			.map(|instruction| instruction.visualize(depth + 1))
+			.collect::<Vec<String>>()
+			.join(format!("\n{prefix}        ").as_str());
+
+			return format!(
+				"{prefix}Function(\n\
+				{prefix}    name={identifier}\n\
+				{prefix}    instructions=\n\
+				{prefix}        {}\n\
+				{prefix})", instructions_str
+			);
+		}
+
+		String::new()
+	}
 }
 
 enum Instruction {
@@ -22,15 +73,60 @@ enum Instruction {
 	Unary{unary_operator : UnaryOperator, src : Val, dst : Val},
 }
 
+impl node::Visualizer for Instruction
+{
+	fn visualize(&self, depth : u8) -> String
+	{
+		match self
+		{
+			Instruction::Return(val) => format!("Return({})", val.visualize(depth + 1)),
+			Instruction::Unary{ unary_operator, src, dst } => {
+				String::from(
+					format!("Unary({}, {}, {})",
+						unary_operator.visualize(depth + 1),
+						src.visualize(depth + 1),
+						dst.visualize(depth + 1),
+					)
+				)
+			}
+		}
+
+	}
+}
+
 enum UnaryOperator {
 	Complement,
 	Negate,
+}
+
+impl node::Visualizer for UnaryOperator
+{
+	fn visualize(&self, depth : u8) -> String
+	{
+		match self
+		{
+			UnaryOperator::Complement => String::from("Complement"),
+			UnaryOperator::Negate => String::from("Negate"),
+		}
+	}
 }
 
 #[derive(Clone)]
 enum Val {
 	Constant(usize),
 	Var(String)
+}
+
+impl node::Visualizer for Val
+{
+	fn visualize(&self, depth : u8) -> String
+	{
+		match self
+		{
+			Val::Constant(value) => format!("Constant({value})"),
+			Val::Var(value) => String::from(format!("Var(\"{value}\")")),
+		}
+	}
 }
 
 fn convert_unary_operator(unary_operator : parser::UnaryOperator) -> UnaryOperator {
