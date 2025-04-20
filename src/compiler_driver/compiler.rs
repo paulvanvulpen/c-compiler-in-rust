@@ -33,8 +33,11 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 		return Ok(());
 	}
 
-	let assembly_ast = assembly_generator::run_assembly_generator(tacky_ast).expect("Assembly generator failed");
+	let mut assembly_ast = assembly_generator::run_assembly_generator(tacky_ast).expect("Assembly generator failed");
 	println!("ASSEMBLY AST\n{}", assembly_ast.visualize(0).as_str());
+
+	let allocation_size = assembly_generator::replace_pseudo_registers(&mut assembly_ast);
+	println!("ASSEMBLY AST after replace pseudo registers\nallocated: {} bytes\n{}", allocation_size, assembly_ast.visualize(0).as_str());
 
 	if args.codegen
 	{

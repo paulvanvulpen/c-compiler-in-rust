@@ -3,7 +3,7 @@ use std::mem::discriminant;
 use super::lexer::Token;
 use super::node;
 
-// Implementation AST Nodes in Zyphyr Abstract Syntax Description Language (ADSL)
+// Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program(function_definition)
 // function_definition = Function(identifier name, statement body)
 // statement = Return(exp)

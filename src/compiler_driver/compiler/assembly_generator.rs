@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use super::{node, tacky};
 
-// Implementation AST Nodes in Zyphyr Abstract Syntax Description Language (ADSL)
+// Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program(function_definition)
 // function_definition = Function(identifier name, instruction* instructions)
 // instruction = Mov(operand src, operand dst)
-//				| Unary(unary_operator, operarand)
+//				| Unary(unary_operator, operand)
 //				| AllocateStack(int)
 //				| Ret
 // unary_operator = Neg | Not
@@ -104,7 +105,7 @@ pub enum Operand {
 	Immediate(usize),
 	Register(Register),
 	Pseudo{ identifier : String},
-	Stack{ offset: usize },
+	Stack{ offset: isize },
 }
 
 impl node::Visualizer for Operand {
@@ -197,4 +198,35 @@ fn convert_ast(ast : tacky::TackyAbstractSyntaxTree) -> AssemblyAbstractSyntaxTr
 pub fn run_assembly_generator(tacky_ast: tacky::TackyAbstractSyntaxTree) -> std::io::Result<AssemblyAbstractSyntaxTree> {
 	let assembly_ast = convert_ast(tacky_ast);
 	Ok(assembly_ast)
+}
+pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -> isize {
+	let mut temporary_to_offset : HashMap<String, isize> = HashMap::new();
+	let mut alloc_size : isize = 0;
+
+	let AssemblyAbstractSyntaxTree::Program(Program::Program(FunctionDefinition::Function { instructions, ..})) = assembly_ast;
+
+	let mut replace_pseudo_with_stack = |operand: &mut Operand| {
+		if let Operand::Pseudo { identifier } = operand {
+			let id = std::mem::take(identifier);
+			let offset = temporary_to_offset.entry(id).or_insert_with(|| {
+				alloc_size += 4;
+				-alloc_size
+			});
+			*operand = Operand::Stack { offset: *offset };
+		}
+	};
+
+	for instruction in instructions.iter_mut() {
+		match instruction {
+			Instruction::Unary(.., operand) => {
+				replace_pseudo_with_stack(operand);
+			},
+			Instruction::Mov(op1, op2) => {
+				replace_pseudo_with_stack(op1);
+				replace_pseudo_with_stack(op2);
+			},
+			Instruction::Ret => {}
+		}
+	}
+	alloc_size
 }
