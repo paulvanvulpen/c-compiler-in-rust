@@ -32,7 +32,8 @@ fn write_function(function_definition : assembly_generator::FunctionDefinition) 
 fn write_instruction(instruction: assembly_generator::Instruction) -> String {
 	match instruction {
 		assembly_generator::Instruction::Mov(src, dst) => format!("movl\t {}, {}\n", write_operand(src), write_operand(dst)),
-		assembly_generator::Instruction::Unary(..) => panic!(),
+		assembly_generator::Instruction::Unary(..) => todo!(),
+		assembly_generator::Instruction::AllocateStack(..) => todo!(),
 		assembly_generator::Instruction::Ret => String::from("ret\n"),
 	}
 }
@@ -41,8 +42,8 @@ fn write_operand(operand : assembly_generator::Operand) -> String {
 	match operand {
 		assembly_generator::Operand::Register(register) => write_register(register),
 		assembly_generator::Operand::Immediate(int) => format!("${int}"),
-		assembly_generator::Operand::Pseudo { .. } => panic!(),
-		assembly_generator::Operand::Stack { .. } => panic!(),
+		assembly_generator::Operand::Pseudo { .. } => todo!(),
+		assembly_generator::Operand::Stack { .. } => todo!(),
 	}
 }
 

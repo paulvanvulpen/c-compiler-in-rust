@@ -11,8 +11,7 @@ use super::{node, tacky};
 // unary_operator = Neg | Not
 // operand = Imm(int) | Reg(reg) | Pseudo(identifier) | Stack(int)
 // reg = AX | R10
-pub enum AssemblyAbstractSyntaxTree
-{
+pub enum AssemblyAbstractSyntaxTree {
 	Program(Program),
 }
 
@@ -25,15 +24,12 @@ impl node::Visualizer for AssemblyAbstractSyntaxTree  {
 }
 
 // <program>
-pub enum Program
-{
+pub enum Program {
 	Program(FunctionDefinition)
 }
 
-impl node::Visualizer for Program
-{
-	fn visualize(&self, depth : u8) -> String
-	{
+impl node::Visualizer for Program {
+	fn visualize(&self, depth : u8) -> String {
 		let Program::Program(function_definition) = self;
 		String::from(format!(
 		"Program(\n\
@@ -43,15 +39,12 @@ impl node::Visualizer for Program
 }
 
 // <function>
-pub enum FunctionDefinition
-{
+pub enum FunctionDefinition {
 	Function{ identifier : String, instructions : Vec<Instruction> }
 }
 
-impl node::Visualizer for FunctionDefinition
-{
-	fn visualize(&self, depth : u8) -> String
-	{
+impl node::Visualizer for FunctionDefinition {
+	fn visualize(&self, depth : u8) -> String {
 		let FunctionDefinition::Function{identifier, instructions} = self;
 		let prefix = "    ".repeat(depth as usize);
 		let instructions_str = instructions.iter()
@@ -72,6 +65,7 @@ impl node::Visualizer for FunctionDefinition
 pub enum Instruction {
 	Mov(Operand, Operand),
 	Unary(UnaryOperator, Operand),
+	AllocateStack(usize),
 	Ret
 }
 
@@ -80,6 +74,7 @@ impl node::Visualizer for Instruction {
 		match self {
 			Instruction::Mov(op1, op2) => format!("Mov({}, {})", op1.visualize(depth + 1), op2.visualize(depth + 1)),
 			Instruction::Unary(unary_operator, dst) => format!("Unary({}, {})", unary_operator.visualize(depth + 1), dst.visualize(depth + 1)),
+			Instruction::AllocateStack(int) => format!("AllocateStack({})", int),
 			Instruction::Ret => String::from("Ret")
 		}
 
@@ -147,7 +142,6 @@ fn convert_unary_operator(unary_operator : tacky::UnaryOperator) -> UnaryOperato
 		tacky::UnaryOperator::Complement => UnaryOperator::Not,
 		tacky::UnaryOperator::Negate => UnaryOperator::Neg,
 	}
-
 }
 
 fn convert_instruction(instruction : tacky::Instruction) -> Vec<Instruction> {
@@ -195,24 +189,25 @@ fn convert_ast(ast : tacky::TackyAbstractSyntaxTree) -> AssemblyAbstractSyntaxTr
 		}
 	}
 }
+
 pub fn run_assembly_generator(tacky_ast: tacky::TackyAbstractSyntaxTree) -> std::io::Result<AssemblyAbstractSyntaxTree> {
 	let assembly_ast = convert_ast(tacky_ast);
 	Ok(assembly_ast)
 }
-pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -> isize {
+pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -> usize {
 	let mut temporary_to_offset : HashMap<String, isize> = HashMap::new();
-	let mut alloc_size : isize = 0;
+	let mut alloc_size : usize = 0;
 
 	let AssemblyAbstractSyntaxTree::Program(Program::Program(FunctionDefinition::Function { instructions, ..})) = assembly_ast;
 
 	let mut replace_pseudo_with_stack = |operand: &mut Operand| {
 		if let Operand::Pseudo { identifier } = operand {
 			let id = std::mem::take(identifier);
-			let offset = temporary_to_offset.entry(id).or_insert_with(|| {
+			let offset : isize = *temporary_to_offset.entry(id).or_insert_with(|| {
 				alloc_size += 4;
-				-alloc_size
+				-(alloc_size as isize)
 			});
-			*operand = Operand::Stack { offset: *offset };
+			*operand = Operand::Stack { offset };
 		}
 	};
 
@@ -225,8 +220,16 @@ pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -
 				replace_pseudo_with_stack(op1);
 				replace_pseudo_with_stack(op2);
 			},
-			Instruction::Ret => {}
+			Instruction::Ret | Instruction::AllocateStack(_) => {}
 		}
 	}
 	alloc_size
+}
+
+pub fn fix_up_invalid_instructions(assembly_ast: &mut AssemblyAbstractSyntaxTree, allocate_stack_size : usize) {
+	let AssemblyAbstractSyntaxTree::Program(Program::Program(FunctionDefinition::Function { instructions, ..})) = assembly_ast;
+
+	if allocate_stack_size > 0 {
+		instructions.insert(0, Instruction::AllocateStack(allocate_stack_size));
+	}
 }

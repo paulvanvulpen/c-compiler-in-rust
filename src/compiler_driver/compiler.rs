@@ -39,6 +39,9 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 	let allocation_size = assembly_generator::replace_pseudo_registers(&mut assembly_ast);
 	println!("ASSEMBLY AST after replace pseudo registers\nallocated: {} bytes\n{}", allocation_size, assembly_ast.visualize(0).as_str());
 
+	assembly_generator::fix_up_invalid_instructions(&mut assembly_ast, allocation_size);
+	println!("ASSEMBLY AST after fixing up invalid instructions\n{}", assembly_ast.visualize(0).as_str());
+
 	if args.codegen
 	{
 		return Ok(());
