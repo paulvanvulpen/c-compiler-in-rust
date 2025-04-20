@@ -10,16 +10,13 @@ pub enum TackyAbstractSyntaxTree {
 }
 
 impl node::Visualizer for TackyAbstractSyntaxTree {
-	fn visualize(&self, depth: u8) -> String {
-		if let TackyAbstractSyntaxTree::Program(program) = self {
-			return program.visualize(0);
-		}
-
-		String::new()
+	fn visualize(&self, _depth: u8) -> String {
+		let TackyAbstractSyntaxTree::Program(program) = self;
+		program.visualize(0)
 	}
 }
 
-enum Program {
+pub enum Program {
 	Program(FunctionDefinition),
 }
 
@@ -27,19 +24,15 @@ impl node::Visualizer for Program
 {
 	fn visualize(&self, depth : u8) -> String
 	{
-		if let Program::Program(function_definition) = self
-		{
-			return String::from(format!(
-			"Program(\n\
-			{}\n\
-			)", function_definition.visualize(depth + 1)))
-		}
-
-		String::new()
+		let Program::Program(function_definition) = self;
+		format!(
+		"Program(\n\
+		{}\n\
+		)", function_definition.visualize(depth + 1))
 	}
 }
 
-enum FunctionDefinition {
+pub enum FunctionDefinition {
 	Function{ identifier : String, instructions : Vec<Instruction>},
 }
 
@@ -47,28 +40,24 @@ impl node::Visualizer for FunctionDefinition
 {
 	fn visualize(&self, depth : u8) -> String
 	{
-		if let FunctionDefinition::Function{identifier, instructions} = self
-		{
+		let FunctionDefinition::Function{identifier, instructions} = self;
 			let prefix = "    ".repeat(depth as usize);
 			let instructions_str = instructions.iter()
-			.map(|instruction| instruction.visualize(depth + 1))
-			.collect::<Vec<String>>()
-			.join(format!("\n{prefix}        ").as_str());
+				.map(|instruction| instruction.visualize(depth + 1))
+				.collect::<Vec<String>>()
+				.join(format!("\n{prefix}        ").as_str());
 
-			return format!(
-				"{prefix}Function(\n\
-				{prefix}    name={identifier}\n\
-				{prefix}    instructions=\n\
-				{prefix}        {}\n\
-				{prefix})", instructions_str
-			);
-		}
-
-		String::new()
+			format!(
+			"{prefix}Function(\n\
+			{prefix}    name={identifier}\n\
+			{prefix}    instructions=\n\
+			{prefix}        {}\n\
+			{prefix})", instructions_str
+			)
 	}
 }
 
-enum Instruction {
+pub enum Instruction {
 	Return(Val),
 	Unary{unary_operator : UnaryOperator, src : Val, dst : Val},
 }
@@ -94,14 +83,14 @@ impl node::Visualizer for Instruction
 	}
 }
 
-enum UnaryOperator {
+pub enum UnaryOperator {
 	Complement,
 	Negate,
 }
 
 impl node::Visualizer for UnaryOperator
 {
-	fn visualize(&self, depth : u8) -> String
+	fn visualize(&self, _depth : u8) -> String
 	{
 		match self
 		{
@@ -112,14 +101,14 @@ impl node::Visualizer for UnaryOperator
 }
 
 #[derive(Clone)]
-enum Val {
+pub enum Val {
 	Constant(usize),
 	Var(String)
 }
 
 impl node::Visualizer for Val
 {
-	fn visualize(&self, depth : u8) -> String
+	fn visualize(&self, _depth : u8) -> String
 	{
 		match self
 		{
@@ -148,7 +137,7 @@ fn get_destination(instruction_ref : &Instruction) -> Val
 		Instruction::Return(val) => {
 			(*val).clone()
 		}
-		Instruction::Unary { unary_operator, src, dst} => {
+		Instruction::Unary { dst, ..} => {
 			(*dst).clone()
 		},
 	}

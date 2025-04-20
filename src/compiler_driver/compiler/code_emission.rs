@@ -31,21 +31,25 @@ fn write_function(function_definition : assembly_generator::FunctionDefinition) 
 }
 fn write_instruction(instruction: assembly_generator::Instruction) -> String {
 	match instruction {
-		assembly_generator::Instruction::Mov(src, dst) => String::from(format!("movl\t {}, {}\n", write_operand(src), write_operand(dst))),
-		assembly_generator::Instruction::Ret => String::from("ret\n")
+		assembly_generator::Instruction::Mov(src, dst) => format!("movl\t {}, {}\n", write_operand(src), write_operand(dst)),
+		assembly_generator::Instruction::Unary(..) => panic!(),
+		assembly_generator::Instruction::Ret => String::from("ret\n"),
 	}
 }
 
 fn write_operand(operand : assembly_generator::Operand) -> String {
 	match operand {
 		assembly_generator::Operand::Register(register) => write_register(register),
-		assembly_generator::Operand::Immediate(int) => String::from(format!("${int}")),
+		assembly_generator::Operand::Immediate(int) => format!("${int}"),
+		assembly_generator::Operand::Pseudo { .. } => panic!(),
+		assembly_generator::Operand::Stack { .. } => panic!(),
 	}
 }
 
 fn write_register(register :assembly_generator::Register) -> String {
 	match register {
-		assembly_generator::Register::EAX => String::from("%eax"),
+		assembly_generator::Register::AX => String::from("%eax"),
+		assembly_generator::Register::R10 => String::from( "%r10"),
 	}
 }
 

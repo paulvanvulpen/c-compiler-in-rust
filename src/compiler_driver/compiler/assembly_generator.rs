@@ -1,19 +1,25 @@
-use super::parser;
-use super::node;
+use super::{node, tacky};
 
+// Implementation AST Nodes in Zyphyr Abstract Syntax Description Language (ADSL)
+// program = Program(function_definition)
+// function_definition = Function(identifier name, instruction* instructions)
+// instruction = Mov(operand src, operand dst)
+//				| Unary(unary_operator, operarand)
+//				| AllocateStack(int)
+//				| Ret
+// unary_operator = Neg | Not
+// operand = Imm(int) | Reg(reg) | Pseudo(identifier) | Stack(int)
+// reg = AX | R10
 pub enum AssemblyAbstractSyntaxTree
 {
 	Program(Program),
 }
 
 impl node::Visualizer for AssemblyAbstractSyntaxTree  {
-	fn visualize(&self, depth : u8) -> String
+	fn visualize(&self, _depth : u8) -> String
 	{
-		if let AssemblyAbstractSyntaxTree::Program(program) = self {
-			return program.visualize(0);
-		}
-
-		String::new()
+		let AssemblyAbstractSyntaxTree::Program(program) = self;
+		program.visualize(0)
 	}
 }
 
@@ -27,15 +33,11 @@ impl node::Visualizer for Program
 {
 	fn visualize(&self, depth : u8) -> String
 	{
-		if let Program::Program(function_definition) = self
-		{
-			return String::from(format!(
-			"Program(\n\
-			{}\n\
-			)", function_definition.visualize(depth + 1)))
-		}
-
-		String::new()
+		let Program::Program(function_definition) = self;
+		String::from(format!(
+		"Program(\n\
+		{}\n\
+		)", function_definition.visualize(depth + 1)))
 	}
 }
 
@@ -49,119 +51,150 @@ impl node::Visualizer for FunctionDefinition
 {
 	fn visualize(&self, depth : u8) -> String
 	{
-		if let FunctionDefinition::Function{identifier, instructions} = self
-		{
-			let prefix = "    ".repeat(depth as usize);
-			let instructions_str = instructions.iter()
-			.map(|instruction| instruction.visualize(depth + 1))
-			.collect::<Vec<String>>()
-			.join(format!("\n{prefix}        ").as_str());
+		let FunctionDefinition::Function{identifier, instructions} = self;
+		let prefix = "    ".repeat(depth as usize);
+		let instructions_str = instructions.iter()
+		.map(|instruction| instruction.visualize(depth + 1))
+		.collect::<Vec<String>>()
+		.join(format!("\n{prefix}        ").as_str());
 
-			return format!(
-				"{prefix}Function(\n\
-				{prefix}    name={identifier}\n\
-				{prefix}    instructions=\n\
-				{prefix}        {}\n\
-				{prefix})", instructions_str
-			);
-		}
-
-		String::new()
+		format!(
+		"{prefix}Function(\n\
+		{prefix}    name={identifier}\n\
+		{prefix}    instructions=\n\
+		{prefix}        {}\n\
+		{prefix})", instructions_str
+		)
 	}
 }
 
-pub enum Instruction
-{
+pub enum Instruction {
 	Mov(Operand, Operand),
+	Unary(UnaryOperator, Operand),
 	Ret
 }
 
-impl node::Visualizer for Instruction
-{
-	fn visualize(&self, depth : u8) -> String
-	{
-		match self
-		{
+impl node::Visualizer for Instruction {
+	fn visualize(&self, depth : u8) -> String {
+		match self {
 			Instruction::Mov(op1, op2) => format!("Mov({}, {})", op1.visualize(depth + 1), op2.visualize(depth + 1)),
+			Instruction::Unary(unary_operator, dst) => format!("Unary({}, {})", unary_operator.visualize(depth + 1), dst.visualize(depth + 1)),
 			Instruction::Ret => String::from("Ret")
 		}
 
 	}
 }
 
-pub enum Operand
-{
-	Immediate(usize),
-	Register(Register)
+
+pub enum UnaryOperator {
+	Neg,
+	Not,
 }
 
-impl node::Visualizer for Operand
-{
+impl node::Visualizer for UnaryOperator {
+	fn visualize(&self, _depth : u8) -> String {
+		match self {
+			UnaryOperator::Neg => String::from("Neg"),
+			UnaryOperator::Not => String::from("Not"),
+		}
+	}
+}
+
+pub enum Operand {
+	Immediate(usize),
+	Register(Register),
+	Pseudo{ identifier : String},
+	Stack{ offset: usize },
+}
+
+impl node::Visualizer for Operand {
 	fn visualize(&self, depth : u8) -> String
 	{
 		match self
 		{
 			Operand::Immediate(value) => format!("Imm({value})"),
-			Operand::Register(register) => register.visualize(depth + 1)
+			Operand::Register(register) => register.visualize(depth + 1),
+			Operand::Pseudo { identifier } => format!("Pseudo({identifier}"),
+			Operand::Stack { offset } => format!("Stack({offset})"),
 		}
 	}
 }
 
-pub enum Register
-{
-	EAX,
+pub enum Register {
+	AX,
+	R10
 }
 
-impl node::Visualizer for Register
-{
-	fn visualize(&self, depth : u8) -> String
-	{
-		String::from("EAX")
+impl node::Visualizer for Register {
+	fn visualize(&self, _depth : u8) -> String {
+		match self {
+			Register::AX => String::from("Reg(AX)"),
+			Register::R10 => String::from("Reg(R10)"),
+		}
 	}
 }
 
-fn convert_expression(expression : parser::Expression) -> Operand {
-    match expression {
-        parser::Expression::Constant(constant) => Operand::Immediate(constant),
-		_ => panic!()
-    }
+fn convert_val(val : tacky::Val) -> Operand {
+	match val {
+		tacky::Val::Constant(value) => Operand::Immediate(value),
+		tacky::Val::Var(identifier) => Operand::Pseudo { identifier },
+	}
 }
 
-fn convert_statement(statement : parser::Statement) -> Vec<Instruction> {
-    match statement {
-        parser::Statement::Return(expression) => {
-            vec![
-                Instruction::Mov(convert_expression(expression), Operand::Register(Register::EAX)),
-                Instruction::Ret
-            ]
-        }
-    }
+fn convert_unary_operator(unary_operator : tacky::UnaryOperator) -> UnaryOperator {
+	match unary_operator {
+		tacky::UnaryOperator::Complement => UnaryOperator::Not,
+		tacky::UnaryOperator::Negate => UnaryOperator::Neg,
+	}
+
 }
 
-fn convert_function_definition(function_definition : parser::FunctionDefinition) -> FunctionDefinition {
-    match function_definition {
-        parser::FunctionDefinition::Function{ identifier, body } => {
-            FunctionDefinition::Function { identifier, instructions: convert_statement(body) }
-        }
-    }
+fn convert_instruction(instruction : tacky::Instruction) -> Vec<Instruction> {
+	match instruction {
+		tacky::Instruction::Return(val) => {
+			vec![
+				Instruction::Mov(convert_val(val), Operand::Register(Register::AX)),
+				Instruction::Ret
+			]
+		},
+		tacky::Instruction::Unary { unary_operator, src, dst} => {
+			vec![
+				Instruction::Mov(convert_val(src), convert_val(dst.clone())),
+				Instruction::Unary(convert_unary_operator(unary_operator), convert_val(dst))
+			]
+		}
+	}
 }
 
-fn convert_program(program : parser::Program) -> Program {
-    match program {
-        parser::Program::Program(function_definition) => {
-            Program::Program(convert_function_definition(function_definition))
-        }
-    }
+fn convert_function_definition(function_definition : tacky::FunctionDefinition) -> FunctionDefinition {
+	match function_definition {
+		tacky::FunctionDefinition::Function{ identifier, instructions } => {
+			FunctionDefinition::Function { identifier, instructions: {
+				instructions.into_iter()
+					.flat_map(convert_instruction)
+					.collect()
+				}
+			}
+		}
+	}
 }
 
-fn convert_ast(ast : parser::AbstractSyntaxTree) -> AssemblyAbstractSyntaxTree {
+fn convert_program(program : tacky::Program) -> Program {
+	match program {
+		tacky::Program::Program(function_definition) => {
+			Program::Program(convert_function_definition(function_definition))
+		}
+	}
+}
+
+fn convert_ast(ast : tacky::TackyAbstractSyntaxTree) -> AssemblyAbstractSyntaxTree {
 	match ast {
-		parser::AbstractSyntaxTree::Program(program) => {
+		tacky::TackyAbstractSyntaxTree::Program(program) => {
 			AssemblyAbstractSyntaxTree::Program(convert_program(program))
 		}
 	}
 }
-pub fn run_assembly_generator(ast: parser::AbstractSyntaxTree) -> std::io::Result<AssemblyAbstractSyntaxTree> {
-	let assembly_ast = convert_ast(ast);
+pub fn run_assembly_generator(tacky_ast: tacky::TackyAbstractSyntaxTree) -> std::io::Result<AssemblyAbstractSyntaxTree> {
+	let assembly_ast = convert_ast(tacky_ast);
 	Ok(assembly_ast)
 }

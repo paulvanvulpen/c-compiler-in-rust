@@ -7,7 +7,8 @@ use super::node;
 // program = Program(function_definition)
 // function_definition = Function(identifier name, statement body)
 // statement = Return(exp)
-// exp = Constant(int)
+// exp = Constant(int) | Unary(unary_operator, exp)
+// unary_operator = Complement | Negate
 pub enum AbstractSyntaxTree
 {
 	Program(Program),
@@ -15,14 +16,10 @@ pub enum AbstractSyntaxTree
 
 impl node::Visualizer for AbstractSyntaxTree
 {
-	fn visualize(&self, depth : u8) -> String
+	fn visualize(&self, _depth : u8) -> String
 	{
-		if let AbstractSyntaxTree::Program(program) = self
-		{
-			return program.visualize(0);
-		}
-
-		String::new()
+		let AbstractSyntaxTree::Program(program) = self;
+		program.visualize(0)
 	}
 }
 
@@ -38,15 +35,11 @@ impl node::Visualizer for Program
 {
 	fn visualize(&self, depth : u8) -> String
 	{
-		if let Program::Program(function_definition) = self
-		{
-			return String::from(format!(
-			"Program(\n\
-			{}\n\
-			)", function_definition.visualize(depth + 1)))
-		}
-
-		String::new()
+		let Program::Program(function_definition) = self;
+		String::from(format!(
+		"Program(\n\
+		{}\n\
+		)", function_definition.visualize(depth + 1)))
 	}
 }
 
@@ -60,18 +53,14 @@ impl node::Visualizer for FunctionDefinition
 {
 	fn visualize(&self, depth : u8) -> String
 	{
-		if let FunctionDefinition::Function{identifier, body} = self
-		{
-			let prefix = "    ".repeat(depth as usize);
-			return format!(
-				"{prefix}Function(\n\
-				{prefix}    name={identifier}\n\
-				{prefix}    body={}\n\
-				{prefix})", body.visualize(depth + 1)
-			);
-		}
-
-		String::new()
+		let FunctionDefinition::Function { identifier, body } = self;
+		let prefix = "    ".repeat(depth as usize);
+		format!(
+			"{prefix}Function(\n\
+			{prefix}    name={identifier}\n\
+			{prefix}    body={}\n\
+			{prefix})", body.visualize(depth + 1)
+		)
 	}
 }
 
@@ -85,17 +74,15 @@ impl node::Visualizer for Statement
 {
 	fn visualize(&self, depth : u8) -> String
 	{
-		if let Statement::Return(expression) = self
+		let Statement::Return(expression) = self;
 		{
 			let prefix = "    ".repeat(depth as usize);
-			return format!(
+			format!(
 				"Return(\n\
 				{prefix}    {}\n\
 				{prefix})", expression.visualize(depth + 1)
-			);
+			)
 		}
-
-		String::new()
 	}
 }
 
@@ -114,8 +101,7 @@ impl node::Visualizer for Expression {
 			},
 			Expression::Unary(unary_operator, boxed_expression) => {
 				format!("{}{}", unary_operator.visualize(depth + 1), boxed_expression.visualize(depth + 1))
-			}
-			_ => String::new()
+			},
 		}
 	}
 }
@@ -128,12 +114,11 @@ pub enum UnaryOperator
 }
 
 impl node::Visualizer for UnaryOperator {
-	fn visualize(&self, depth: u8) -> String
+	fn visualize(&self, _depth: u8) -> String
 	{
 		match self {
 			UnaryOperator::Complement => String::from("~"),
 			UnaryOperator::Negate => String::from("-"),
-			_ => String::from("")
 		}
 	}
 }
@@ -202,6 +187,7 @@ fn parse_exp(lexer_tokens : &[Token]) -> io::Result<(Expression, &[Token])> {
 	}
 }
 
+// <unop> ::= "-" | "~"
 fn parse_unary_operator(lexer_tokens : &[Token]) -> io::Result<(UnaryOperator, &[Token])> {
 	match &lexer_tokens[0] {
 		Token::TokenHyphen => Ok((UnaryOperator::Negate, &lexer_tokens[1..])),

@@ -33,8 +33,8 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 		return Ok(());
 	}
 
-/*	let assembly_ast = assembly_generator::run_assembly_generator(ast).expect("Assembly generator failed");
-	println!("{}", assembly_ast.visualize(0).as_str());
+	let assembly_ast = assembly_generator::run_assembly_generator(tacky_ast).expect("Assembly generator failed");
+	println!("ASSEMBLY AST\n{}", assembly_ast.visualize(0).as_str());
 
 	if args.codegen
 	{
@@ -42,6 +42,6 @@ pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &s
 	}
 
 	code_emission::run_code_emission(assembly_ast, input_file_path).expect("Code emission failed");
-*/
+
 	Ok(())
 }
