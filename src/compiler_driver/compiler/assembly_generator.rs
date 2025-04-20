@@ -226,10 +226,33 @@ pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -
 	alloc_size
 }
 
+fn split_mem_to_mem_instruction(instruction : Instruction) -> Vec<Instruction> {
+	match instruction {
+		Instruction::Mov(
+			op1 @ Operand::Stack { .. },
+			op2 @ Operand::Stack { .. },
+		) => vec![
+			Instruction::Mov(op1, Operand::Register(Register::R10)),
+			Instruction::Mov(Operand::Register(Register::R10), op2),
+		],
+		other => vec![other],
+	}
+}
+
+fn fix_up_unpack_mem_to_mem_mov_instruction(instructions : Vec<Instruction>) -> Vec<Instruction>  {
+	instructions
+		.into_iter()
+		.flat_map(split_mem_to_mem_instruction)
+		.collect()
+}
+
 pub fn fix_up_invalid_instructions(assembly_ast: &mut AssemblyAbstractSyntaxTree, allocate_stack_size : usize) {
 	let AssemblyAbstractSyntaxTree::Program(Program::Program(FunctionDefinition::Function { instructions, ..})) = assembly_ast;
 
 	if allocate_stack_size > 0 {
 		instructions.insert(0, Instruction::AllocateStack(allocate_stack_size));
 	}
+
+	let old = std::mem::take(instructions);
+	*instructions = fix_up_unpack_mem_to_mem_mov_instruction(old);
 }
