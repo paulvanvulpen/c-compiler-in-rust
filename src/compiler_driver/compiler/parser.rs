@@ -1,7 +1,7 @@
 use std::io;
 use std::mem::discriminant;
 use super::lexer::Token;
-use super::node;
+use super::visualize;
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program(function_definition)
@@ -14,7 +14,7 @@ pub enum AbstractSyntaxTree
 	Program(Program),
 }
 
-impl node::Visualizer for AbstractSyntaxTree
+impl visualize::Visualizer for AbstractSyntaxTree
 {
 	fn visualize(&self, _depth : u8) -> String
 	{
@@ -31,7 +31,7 @@ pub enum Program
 	Program(FunctionDefinition)
 }
 
-impl node::Visualizer for Program
+impl visualize::Visualizer for Program
 {
 	fn visualize(&self, depth : u8) -> String
 	{
@@ -49,7 +49,7 @@ pub enum FunctionDefinition
 	Function{ identifier : String, body : Statement }
 }
 
-impl node::Visualizer for FunctionDefinition
+impl visualize::Visualizer for FunctionDefinition
 {
 	fn visualize(&self, depth : u8) -> String
 	{
@@ -70,7 +70,7 @@ pub enum Statement
 	Return(Expression),
 }
 
-impl node::Visualizer for Statement
+impl visualize::Visualizer for Statement
 {
 	fn visualize(&self, depth : u8) -> String
 	{
@@ -93,7 +93,7 @@ pub enum Expression
 	Unary(UnaryOperator, Box<Expression>),
 }
 
-impl node::Visualizer for Expression {
+impl visualize::Visualizer for Expression {
 	fn visualize(&self, depth : u8) -> String {
 		match self {
 			Expression::Constant(value) => {
@@ -113,7 +113,7 @@ pub enum UnaryOperator
 	Negate
 }
 
-impl node::Visualizer for UnaryOperator {
+impl visualize::Visualizer for UnaryOperator {
 	fn visualize(&self, _depth: u8) -> String
 	{
 		match self {

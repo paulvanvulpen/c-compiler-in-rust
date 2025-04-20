@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use super::{node, tacky};
+use super::tacky;
+
+mod visualize;
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program(function_definition)
@@ -15,27 +17,9 @@ pub enum AssemblyAbstractSyntaxTree {
 	Program(Program),
 }
 
-impl node::Visualizer for AssemblyAbstractSyntaxTree  {
-	fn visualize(&self, _depth : u8) -> String
-	{
-		let AssemblyAbstractSyntaxTree::Program(program) = self;
-		program.visualize(0)
-	}
-}
-
 // <program>
 pub enum Program {
 	Program(FunctionDefinition)
-}
-
-impl node::Visualizer for Program {
-	fn visualize(&self, depth : u8) -> String {
-		let Program::Program(function_definition) = self;
-		String::from(format!(
-		"Program(\n\
-		{}\n\
-		)", function_definition.visualize(depth + 1)))
-	}
 }
 
 // <function>
@@ -43,24 +27,6 @@ pub enum FunctionDefinition {
 	Function{ identifier : String, instructions : Vec<Instruction> }
 }
 
-impl node::Visualizer for FunctionDefinition {
-	fn visualize(&self, depth : u8) -> String {
-		let FunctionDefinition::Function{identifier, instructions} = self;
-		let prefix = "    ".repeat(depth as usize);
-		let instructions_str = instructions.iter()
-		.map(|instruction| instruction.visualize(depth + 1))
-		.collect::<Vec<String>>()
-		.join(format!("\n{prefix}        ").as_str());
-
-		format!(
-		"{prefix}Function(\n\
-		{prefix}    name={identifier}\n\
-		{prefix}    instructions=\n\
-		{prefix}        {}\n\
-		{prefix})", instructions_str
-		)
-	}
-}
 
 pub enum Instruction {
 	Mov(Operand, Operand),
@@ -69,31 +35,9 @@ pub enum Instruction {
 	Ret
 }
 
-impl node::Visualizer for Instruction {
-	fn visualize(&self, depth : u8) -> String {
-		match self {
-			Instruction::Mov(op1, op2) => format!("Mov({}, {})", op1.visualize(depth + 1), op2.visualize(depth + 1)),
-			Instruction::Unary(unary_operator, dst) => format!("Unary({}, {})", unary_operator.visualize(depth + 1), dst.visualize(depth + 1)),
-			Instruction::AllocateStack(int) => format!("AllocateStack({})", int),
-			Instruction::Ret => String::from("Ret")
-		}
-
-	}
-}
-
-
 pub enum UnaryOperator {
 	Neg,
 	Not,
-}
-
-impl node::Visualizer for UnaryOperator {
-	fn visualize(&self, _depth : u8) -> String {
-		match self {
-			UnaryOperator::Neg => String::from("Neg"),
-			UnaryOperator::Not => String::from("Not"),
-		}
-	}
 }
 
 pub enum Operand {
@@ -103,31 +47,9 @@ pub enum Operand {
 	Stack{ offset: isize },
 }
 
-impl node::Visualizer for Operand {
-	fn visualize(&self, depth : u8) -> String
-	{
-		match self
-		{
-			Operand::Immediate(value) => format!("Imm({value})"),
-			Operand::Register(register) => register.visualize(depth + 1),
-			Operand::Pseudo { identifier } => format!("Pseudo({identifier}"),
-			Operand::Stack { offset } => format!("Stack({offset})"),
-		}
-	}
-}
-
 pub enum Register {
 	AX,
 	R10
-}
-
-impl node::Visualizer for Register {
-	fn visualize(&self, _depth : u8) -> String {
-		match self {
-			Register::AX => String::from("Reg(AX)"),
-			Register::R10 => String::from("Reg(R10)"),
-		}
-	}
 }
 
 fn convert_val(val : tacky::Val) -> Operand {
@@ -194,6 +116,7 @@ pub fn run_assembly_generator(tacky_ast: tacky::TackyAbstractSyntaxTree) -> std:
 	let assembly_ast = convert_ast(tacky_ast);
 	Ok(assembly_ast)
 }
+
 pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -> usize {
 	let mut temporary_to_offset : HashMap<String, isize> = HashMap::new();
 	let mut alloc_size : usize = 0;

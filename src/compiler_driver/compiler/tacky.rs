@@ -1,4 +1,4 @@
-use super::{node, parser};
+use super::{visualize, parser};
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program (function_definition)
@@ -10,7 +10,7 @@ pub enum TackyAbstractSyntaxTree {
 	Program(Program),
 }
 
-impl node::Visualizer for TackyAbstractSyntaxTree {
+impl visualize::Visualizer for TackyAbstractSyntaxTree {
 	fn visualize(&self, _depth: u8) -> String {
 		let TackyAbstractSyntaxTree::Program(program) = self;
 		program.visualize(0)
@@ -21,7 +21,7 @@ pub enum Program {
 	Program(FunctionDefinition),
 }
 
-impl node::Visualizer for Program
+impl visualize::Visualizer for Program
 {
 	fn visualize(&self, depth : u8) -> String
 	{
@@ -37,7 +37,7 @@ pub enum FunctionDefinition {
 	Function{ identifier : String, instructions : Vec<Instruction>},
 }
 
-impl node::Visualizer for FunctionDefinition
+impl visualize::Visualizer for FunctionDefinition
 {
 	fn visualize(&self, depth : u8) -> String
 	{
@@ -63,7 +63,7 @@ pub enum Instruction {
 	Unary{unary_operator : UnaryOperator, src : Val, dst : Val},
 }
 
-impl node::Visualizer for Instruction
+impl visualize::Visualizer for Instruction
 {
 	fn visualize(&self, depth : u8) -> String
 	{
@@ -89,7 +89,7 @@ pub enum UnaryOperator {
 	Negate,
 }
 
-impl node::Visualizer for UnaryOperator
+impl visualize::Visualizer for UnaryOperator
 {
 	fn visualize(&self, _depth : u8) -> String
 	{
@@ -107,7 +107,7 @@ pub enum Val {
 	Var(String)
 }
 
-impl node::Visualizer for Val
+impl visualize::Visualizer for Val
 {
 	fn visualize(&self, _depth : u8) -> String
 	{

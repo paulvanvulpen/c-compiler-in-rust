@@ -1,11 +1,11 @@
 use crate::Args;
-use node::Visualizer;
+use visualize::Visualizer;
 
 pub mod lexer;
 mod parser;
 mod assembly_generator;
 mod code_emission;
-mod node;
+mod visualize;
 mod tacky;
 
 pub(in crate::compiler_driver) fn run_compiler(args : &Args, input_file_path: &std::path::Path) -> std::io::Result<()>
