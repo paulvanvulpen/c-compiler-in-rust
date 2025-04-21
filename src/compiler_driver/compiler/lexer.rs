@@ -20,6 +20,10 @@ pub enum Token {
     Tilde,
     Hyphen,
     DoubleHyphen,
+    Plus,
+    Asterisk,
+    ForwardSlash,
+    PercentSign,
 }
 
 lazy_static! {
@@ -64,6 +68,10 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
             ";" => (Some(Token::Semicolon), remainder),
             "~" => (Some(Token::Tilde), remainder),
             "-" => (Some(Token::Hyphen), remainder),
+            "+" => (Some(Token::Plus), remainder),
+            "*" => (Some(Token::Asterisk), remainder),
+            "/" => (Some(Token::ForwardSlash), remainder),
+            "%" => (Some(Token::PercentSign), remainder),
             _ => (None, remainder),
         };
     }
