@@ -1,7 +1,6 @@
 mod compiler_driver;
 use clap::Parser;
 
-/// A rust-based C compiler.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {

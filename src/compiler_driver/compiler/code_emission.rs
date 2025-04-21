@@ -31,21 +31,42 @@ fn write_function(function_definition: assembly_generator::FunctionDefinition) -
                 .join(format!("{prefix}").as_str());
             String::from(format!(
                 "{prefix}.globl {identifier}\n\
-				{identifier}:\n\
-				{prefix}{}",
+                {identifier}:\n\
+                {prefix}pushq	%rbp\n\
+                {prefix}movq	%rsp, %rbp\n\
+                {prefix}{}",
                 instructions_str
             ))
         }
     }
 }
+
+fn write_unary_operator(unary_operator: assembly_generator::UnaryOperator) -> String {
+    match unary_operator {
+        assembly_generator::UnaryOperator::Neg => String::from("negl"),
+        assembly_generator::UnaryOperator::Not => String::from("notl"),
+    }
+}
+
 fn write_instruction(instruction: assembly_generator::Instruction) -> String {
+    let prefix = "    ";
     match instruction {
         assembly_generator::Instruction::Mov(src, dst) => {
-            format!("movl\t {}, {}\n", write_operand(src), write_operand(dst))
+            format!("movl\t{}, {}\n", write_operand(src), write_operand(dst))
         }
-        assembly_generator::Instruction::Unary(..) => todo!(),
-        assembly_generator::Instruction::AllocateStack(..) => todo!(),
-        assembly_generator::Instruction::Ret => String::from("ret\n"),
+        assembly_generator::Instruction::Unary(unary_operator, operand) => {
+            format!(
+                "{}	{}\n",
+                write_unary_operator(unary_operator),
+                write_operand(operand)
+            )
+        }
+        assembly_generator::Instruction::AllocateStack(size) => format!("subq\t${size}, %rsp\n"),
+        assembly_generator::Instruction::Ret => format!(
+            "movq\t%rbp, %rsp\n\
+            {prefix}popq\t%rbp\n\
+            {prefix}ret\n"
+        ),
     }
 }
 
