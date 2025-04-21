@@ -1,48 +1,49 @@
+use anyhow::Context;
 use regex::Regex;
 use std::io::{self, BufRead};
+use std::path::Path;
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone)]
 pub enum Token {
-    TokenIdentifier(String),
-    TokenConstant(usize),
-    TokenInt,
-    TokenVoid,
-    TokenReturn,
-    TokenOpenParenthesis,
-    TokenCloseParenthesis,
-    TokenOpenBrace,
-    TokenCloseBrace,
-    TokenSemicolon,
-    TokenTilde,
-    TokenHyphen,
-    TokenDoubleHyphen,
+    Identifier(String),
+    Constant(usize),
+    Int,
+    Void,
+    Return,
+    OpenParenthesis,
+    CloseParenthesis,
+    OpenBrace,
+    CloseBrace,
+    Semicolon,
+    Tilde,
+    Hyphen,
+    DoubleHyphen,
 }
 
-pub fn run_lexer(
-    input_file_path: &std::path::Path,
-    out_lexer_tokens: &mut Vec<Token>,
-) -> anyhow::Result<()> {
-    let file = std::fs::File::open(input_file_path).expect("Failed to open input file");
+pub fn run_lexer(input_file_path: &Path) -> anyhow::Result<Vec<Token>> {
+    let file = std::fs::File::open(input_file_path)
+        .with_context(|| format!("opening `{}`", input_file_path.display()))?;
     let reader = io::BufReader::new(file);
     let identifier = Regex::new(r"^[a-zA-Z_]\w*").expect("this doesn't define a regex");
     let constant = Regex::new(r"\d+\b").expect("this doesn't define a regex");
     let whitespace = Regex::new(r"\s+").expect("this doesn't define a regex");
     let mut last_found_token: Option<Token> = None;
+    let mut out_lexer_tokens = vec![];
 
     for line in reader.lines() {
         let line = line.expect("Failed to read line");
         for token in line.split_word_bounds() {
             if let Some(prev_token) = &last_found_token {
                 match (prev_token, token) {
-                    (Token::TokenHyphen, "-") => {
-                        last_found_token = Some(Token::TokenHyphen);
+                    (Token::Hyphen, "-") => {
+                        last_found_token = Some(Token::Hyphen);
                         if let Some(last_found_lexer_token) = out_lexer_tokens.last_mut() {
-                            *last_found_lexer_token = Token::TokenDoubleHyphen;
+                            *last_found_lexer_token = Token::DoubleHyphen;
                         }
                         continue;
                     }
-                    (Token::TokenDoubleHyphen, "-") => {
+                    (Token::DoubleHyphen, "-") => {
                         anyhow::bail!("Unrecognized token: {}", token)
                     }
                     _ => {}
@@ -55,32 +56,27 @@ pub fn run_lexer(
             }
 
             let found_token: Option<Token> = match token {
-                "int" => Some(Token::TokenInt),
-                "void" => Some(Token::TokenVoid),
-                "return" => Some(Token::TokenReturn),
-                "(" => Some(Token::TokenOpenParenthesis),
-                ")" => Some(Token::TokenCloseParenthesis),
-                "{" => Some(Token::TokenOpenBrace),
-                "}" => Some(Token::TokenCloseBrace),
-                ";" => Some(Token::TokenSemicolon),
-                "~" => Some(Token::TokenTilde),
-                "-" => Some(Token::TokenHyphen),
-                _ if identifier.is_match(&token) => Some(Token::TokenIdentifier(token.to_string())),
-                _ if constant.is_match(&token) => {
-                    Some(Token::TokenConstant(token.parse::<usize>().unwrap()))
-                }
+                "int" => Some(Token::Int),
+                "void" => Some(Token::Void),
+                "return" => Some(Token::Return),
+                "(" => Some(Token::OpenParenthesis),
+                ")" => Some(Token::CloseParenthesis),
+                "{" => Some(Token::OpenBrace),
+                "}" => Some(Token::CloseBrace),
+                ";" => Some(Token::Semicolon),
+                "~" => Some(Token::Tilde),
+                "-" => Some(Token::Hyphen),
+                _ if identifier.is_match(&token) => Some(Token::Identifier(token.to_string())),
+                _ if constant.is_match(&token) => Some(Token::Constant(token.parse::<usize>()?)),
                 _ => None,
             };
 
             last_found_token = found_token.clone();
-            out_lexer_tokens.push(found_token.ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Unrecognized token: {}", token),
-                )
-            })?);
+            out_lexer_tokens.push(
+                found_token.ok_or_else(|| anyhow::anyhow!("Unrecognized token `{}`", token))?,
+            );
         }
     }
 
-    Ok(())
+    Ok(out_lexer_tokens)
 }

@@ -1,24 +1,29 @@
 use crate::Args;
-mod compiler;
-use anyhow::Context;
+use anyhow::{Context, Result, bail};
+use log::info;
+
+use std::path::Path;
 use std::process::Command;
 
-pub fn compile(args: &Args) -> anyhow::Result<()> {
+mod compiler;
+
+pub fn compile(args: &Args) -> Result<()> {
     // decide between assembly vs binary
     if let Some(code_path) = &args.code_emission {
-        let input = std::path::Path::new(code_path);
+        let input = Path::new(code_path);
         emit_assembly(args, input)
-            .with_context(|| format!("Assembly emission failed for `{}`", code_path))?
+            .with_context(|| format!("Assembly emission failed for `{}`.", code_path))?
     } else if let Some(src) = &args.source_file {
-        let input = std::path::Path::new(src);
-        emit_binary(args, input).with_context(|| format!("binary emission failed for `{}`", src))?
+        let input = Path::new(src);
+        emit_binary(args, input)
+            .with_context(|| format!("Binary emission failed for `{}`.", src))?
     } else {
-        anyhow::bail!("no input file provided")
+        bail!("No input file provided.")
     }
     Ok(())
 }
 
-fn emit_binary(args: &Args, input_file_path: &std::path::Path) -> anyhow::Result<()> {
+fn emit_binary(args: &Args, input_file_path: &Path) -> Result<()> {
     run_preprocessor(&input_file_path).context("preprocessing step")?;
     compiler::run_compiler(&args, &input_file_path.with_extension("i"))
         .context("compilation step")?;
@@ -26,16 +31,16 @@ fn emit_binary(args: &Args, input_file_path: &std::path::Path) -> anyhow::Result
     Ok(())
 }
 
-fn emit_assembly(args: &Args, input_file_path: &std::path::Path) -> anyhow::Result<()> {
+fn emit_assembly(args: &Args, input_file_path: &Path) -> Result<()> {
     run_preprocessor(&input_file_path).context("preprocessing step")?;
     compiler::run_compiler(&args, &input_file_path.with_extension("i"))
         .context("compilation step")?;
     Ok(())
 }
 
-fn run_preprocessor(input: &std::path::Path) -> anyhow::Result<()> {
+fn run_preprocessor(input: &Path) -> Result<()> {
     if input.extension().and_then(|e| e.to_str()) != Some("c") {
-        anyhow::bail!("expected a '.c' file, but got `{}`", input.display());
+        bail!("Expected a '.c' file, but got `{}`.", input.display());
     }
 
     let out = input.with_extension("i");
@@ -52,16 +57,16 @@ fn run_preprocessor(input: &std::path::Path) -> anyhow::Result<()> {
 
     // Check if command succeeded
     if status.success() {
-        println!("Preprocessing successful: {}", out.to_str().unwrap());
+        info!("Preprocessing successful: {}", out.to_str().unwrap());
         // std::fs::remove_file(out).context("Removing the preprocessed .i file")?;
     } else {
-        anyhow::bail!("preprocessing failed for `{}`", input.display())
+        bail!("preprocessing failed for `{}`", input.display())
     }
 
     Ok(())
 }
 
-fn run_assemble_and_link(input: &std::path::Path) -> anyhow::Result<()> {
+fn run_assemble_and_link(input: &Path) -> Result<()> {
     let asm = input.with_extension("s");
     let exe = input.with_extension("");
     let status = Command::new("gcc")
@@ -70,11 +75,14 @@ fn run_assemble_and_link(input: &std::path::Path) -> anyhow::Result<()> {
         .context("calling gcc for assemble and link step")?;
 
     if status.success() {
-        println!("Assemble and link successful: {}", "return_2");
+        info!(
+            "Assemble and link successful: {}",
+            input.with_extension("c").display()
+        );
         std::fs::remove_file(&asm)
             .with_context(|| format!("removing temp file `{}`", asm.display()))?
     } else {
-        anyhow::bail!("Assembly & link failed for `{}`", asm.display());
+        bail!("Assembly & link failed for `{}`.", asm.display());
     }
 
     Ok(())
