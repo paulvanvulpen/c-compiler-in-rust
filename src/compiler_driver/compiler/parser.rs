@@ -1,7 +1,8 @@
 use std::io;
 use std::mem::discriminant;
 use super::lexer::Token;
-use super::visualize;
+
+mod visualize;
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program(function_definition)
@@ -14,14 +15,6 @@ pub enum AbstractSyntaxTree
 	Program(Program),
 }
 
-impl visualize::Visualizer for AbstractSyntaxTree
-{
-	fn visualize(&self, _depth : u8) -> String
-	{
-		let AbstractSyntaxTree::Program(program) = self;
-		program.visualize(0)
-	}
-}
 
 // Comments on the enums in Backus-Naur form (EBNF)
 
@@ -31,38 +24,12 @@ pub enum Program
 	Program(FunctionDefinition)
 }
 
-impl visualize::Visualizer for Program
-{
-	fn visualize(&self, depth : u8) -> String
-	{
-		let Program::Program(function_definition) = self;
-		String::from(format!(
-		"Program(\n\
-		{}\n\
-		)", function_definition.visualize(depth + 1)))
-	}
-}
-
 // <function>
 pub enum FunctionDefinition
 {
 	Function{ identifier : String, body : Statement }
 }
 
-impl visualize::Visualizer for FunctionDefinition
-{
-	fn visualize(&self, depth : u8) -> String
-	{
-		let FunctionDefinition::Function { identifier, body } = self;
-		let prefix = "    ".repeat(depth as usize);
-		format!(
-			"{prefix}Function(\n\
-			{prefix}    name={identifier}\n\
-			{prefix}    body={}\n\
-			{prefix})", body.visualize(depth + 1)
-		)
-	}
-}
 
 // <statement>
 pub enum Statement
@@ -70,21 +37,6 @@ pub enum Statement
 	Return(Expression),
 }
 
-impl visualize::Visualizer for Statement
-{
-	fn visualize(&self, depth : u8) -> String
-	{
-		let Statement::Return(expression) = self;
-		{
-			let prefix = "    ".repeat(depth as usize);
-			format!(
-				"Return(\n\
-				{prefix}    {}\n\
-				{prefix})", expression.visualize(depth + 1)
-			)
-		}
-	}
-}
 
 // <exp>
 pub enum Expression
@@ -93,34 +45,13 @@ pub enum Expression
 	Unary(UnaryOperator, Box<Expression>),
 }
 
-impl visualize::Visualizer for Expression {
-	fn visualize(&self, depth : u8) -> String {
-		match self {
-			Expression::Constant(value) => {
-				format!("Constant({value})")
-			},
-			Expression::Unary(unary_operator, boxed_expression) => {
-				format!("{}{}", unary_operator.visualize(depth + 1), boxed_expression.visualize(depth + 1))
-			},
-		}
-	}
-}
+
 
 // <unop>
 pub enum UnaryOperator
 {
 	Complement,
 	Negate
-}
-
-impl visualize::Visualizer for UnaryOperator {
-	fn visualize(&self, _depth: u8) -> String
-	{
-		match self {
-			UnaryOperator::Complement => String::from("~"),
-			UnaryOperator::Negate => String::from("-"),
-		}
-	}
 }
 
 // <program> ::= <function>

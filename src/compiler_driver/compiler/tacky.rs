@@ -1,4 +1,7 @@
-use super::{visualize, parser};
+mod visualize;
+
+use super::parser;
+
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program (function_definition)
@@ -10,52 +13,12 @@ pub enum TackyAbstractSyntaxTree {
 	Program(Program),
 }
 
-impl visualize::Visualizer for TackyAbstractSyntaxTree {
-	fn visualize(&self, _depth: u8) -> String {
-		let TackyAbstractSyntaxTree::Program(program) = self;
-		program.visualize(0)
-	}
-}
-
 pub enum Program {
 	Program(FunctionDefinition),
 }
 
-impl visualize::Visualizer for Program
-{
-	fn visualize(&self, depth : u8) -> String
-	{
-		let Program::Program(function_definition) = self;
-		format!(
-		"Program(\n\
-		{}\n\
-		)", function_definition.visualize(depth + 1))
-	}
-}
-
 pub enum FunctionDefinition {
 	Function{ identifier : String, instructions : Vec<Instruction>},
-}
-
-impl visualize::Visualizer for FunctionDefinition
-{
-	fn visualize(&self, depth : u8) -> String
-	{
-		let FunctionDefinition::Function{identifier, instructions} = self;
-			let prefix = "    ".repeat(depth as usize);
-			let instructions_str = instructions.iter()
-				.map(|instruction| instruction.visualize(depth + 1))
-				.collect::<Vec<String>>()
-				.join(format!("\n{prefix}        ").as_str());
-
-			format!(
-			"{prefix}Function(\n\
-			{prefix}    name={identifier}\n\
-			{prefix}    instructions=\n\
-			{prefix}        {}\n\
-			{prefix})", instructions_str
-			)
-	}
 }
 
 pub enum Instruction {
@@ -63,60 +26,15 @@ pub enum Instruction {
 	Unary{unary_operator : UnaryOperator, src : Val, dst : Val},
 }
 
-impl visualize::Visualizer for Instruction
-{
-	fn visualize(&self, depth : u8) -> String
-	{
-		match self
-		{
-			Instruction::Return(val) => format!("Return({})", val.visualize(depth + 1)),
-			Instruction::Unary{ unary_operator, src, dst } => {
-				String::from(
-					format!("Unary({}, {}, {})",
-						unary_operator.visualize(depth + 1),
-						src.visualize(depth + 1),
-						dst.visualize(depth + 1),
-					)
-				)
-			}
-		}
-
-	}
-}
-
 pub enum UnaryOperator {
 	Complement,
 	Negate,
-}
-
-impl visualize::Visualizer for UnaryOperator
-{
-	fn visualize(&self, _depth : u8) -> String
-	{
-		match self
-		{
-			UnaryOperator::Complement => String::from("Complement"),
-			UnaryOperator::Negate => String::from("Negate"),
-		}
-	}
 }
 
 #[derive(Clone)]
 pub enum Val {
 	Constant(usize),
 	Var(String)
-}
-
-impl visualize::Visualizer for Val
-{
-	fn visualize(&self, _depth : u8) -> String
-	{
-		match self
-		{
-			Val::Constant(value) => format!("Constant({value})"),
-			Val::Var(value) => String::from(format!("Var(\"{value}\")")),
-		}
-	}
 }
 
 fn convert_unary_operator(unary_operator : parser::UnaryOperator) -> UnaryOperator {
@@ -132,8 +50,7 @@ fn make_temporary() -> String {
 	format!("tmp.{id}")
 }
 
-fn get_destination(instruction_ref : &Instruction) -> Val
-{
+fn get_destination(instruction_ref : &Instruction) -> Val {
 	match instruction_ref {
 		Instruction::Return(val) => {
 			(*val).clone()
@@ -143,6 +60,7 @@ fn get_destination(instruction_ref : &Instruction) -> Val
 		},
 	}
 }
+
 fn convert_boxed_expression(boxed_expression : Box<parser::Expression>) -> Vec<Instruction> {
 	match *boxed_expression {
 		parser::Expression::Constant(value) => {
