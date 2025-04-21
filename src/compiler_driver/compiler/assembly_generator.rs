@@ -126,7 +126,7 @@ fn convert_ast(ast: tacky::TackyAbstractSyntaxTree) -> AssemblyAbstractSyntaxTre
 
 pub fn run_assembly_generator(
     tacky_ast: tacky::TackyAbstractSyntaxTree,
-) -> std::io::Result<AssemblyAbstractSyntaxTree> {
+) -> anyhow::Result<AssemblyAbstractSyntaxTree> {
     let assembly_ast = convert_ast(tacky_ast);
     Ok(assembly_ast)
 }

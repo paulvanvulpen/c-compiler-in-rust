@@ -29,13 +29,9 @@ struct Args {
     codegen: bool,
 }
 
-fn main() {
+/// A rust-based C compiler.
+fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    match compiler_driver::compile(&args) {
-        Ok(()) => {}
-        Err(err) => {
-            eprintln!("{}", err);
-            std::process::exit(1);
-        }
-    }
+    compiler_driver::compile(&args)?;
+    Ok(())
 }

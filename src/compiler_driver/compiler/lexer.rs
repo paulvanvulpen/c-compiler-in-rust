@@ -22,7 +22,7 @@ pub enum Token {
 pub fn run_lexer(
     input_file_path: &std::path::Path,
     out_lexer_tokens: &mut Vec<Token>,
-) -> io::Result<()> {
+) -> anyhow::Result<()> {
     let file = std::fs::File::open(input_file_path).expect("Failed to open input file");
     let reader = io::BufReader::new(file);
     let identifier = Regex::new(r"^[a-zA-Z_]\w*").expect("this doesn't define a regex");
@@ -43,10 +43,7 @@ pub fn run_lexer(
                         continue;
                     }
                     (Token::TokenDoubleHyphen, "-") => {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            format!("Unrecognized token: {}", token),
-                        ));
+                        anyhow::bail!("Unrecognized token: {}", token)
                     }
                     _ => {}
                 }

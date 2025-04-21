@@ -11,7 +11,7 @@ mod visualize;
 pub(in crate::compiler_driver) fn run_compiler(
     args: &Args,
     input_file_path: &std::path::Path,
-) -> std::io::Result<()> {
+) -> anyhow::Result<()> {
     let mut lexer_tokens: Vec<lexer::Token> = vec![];
     lexer::run_lexer(input_file_path, &mut lexer_tokens)?;
 

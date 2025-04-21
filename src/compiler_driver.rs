@@ -1,81 +1,80 @@
-mod compiler;
-
 use crate::Args;
-use std::io;
+mod compiler;
+use anyhow::Context;
 use std::process::Command;
 
-pub fn compile(args: &Args) -> io::Result<()> {
-    match (&args.code_emission, &args.source_file) {
-        (Some(code_path), _) => {
-            let input_file_path = std::path::Path::new(code_path);
-            emit_assembly(args, input_file_path)
-        }
-        (None, Some(source_path)) => {
-            let input_file_path = std::path::Path::new(source_path);
-            emit_binary(args, input_file_path)
-        }
-        (None, None) => Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "No input file provided",
-        )),
+pub fn compile(args: &Args) -> anyhow::Result<()> {
+    // decide between assembly vs binary
+    if let Some(code_path) = &args.code_emission {
+        let input = std::path::Path::new(code_path);
+        emit_assembly(args, input)
+            .with_context(|| format!("Assembly emission failed for `{}`", code_path))?
+    } else if let Some(src) = &args.source_file {
+        let input = std::path::Path::new(src);
+        emit_binary(args, input).with_context(|| format!("binary emission failed for `{}`", src))?
+    } else {
+        anyhow::bail!("no input file provided")
     }
+    Ok(())
 }
 
-fn emit_binary(args: &Args, input_file_path: &std::path::Path) -> io::Result<()> {
-    run_preprocessor(&input_file_path).expect("Failed to run the preprocessor");
-    compiler::run_compiler(&args, &input_file_path.with_extension("i"))?;
-    run_assemble_and_link(&input_file_path)
-}
-
-fn emit_assembly(args: &Args, input_file_path: &std::path::Path) -> io::Result<()> {
-    run_preprocessor(&input_file_path)?;
+fn emit_binary(args: &Args, input_file_path: &std::path::Path) -> anyhow::Result<()> {
+    run_preprocessor(&input_file_path).context("preprocessing step")?;
     compiler::run_compiler(&args, &input_file_path.with_extension("i"))
+        .context("compilation step")?;
+    run_assemble_and_link(&input_file_path).context("assembling & linking")?;
+    Ok(())
 }
 
-fn run_preprocessor(input_file_path: &std::path::Path) -> io::Result<()> {
-    assert_eq!("c", input_file_path.extension().unwrap());
+fn emit_assembly(args: &Args, input_file_path: &std::path::Path) -> anyhow::Result<()> {
+    run_preprocessor(&input_file_path).context("preprocessing step")?;
+    compiler::run_compiler(&args, &input_file_path.with_extension("i"))
+        .context("compilation step")?;
+    Ok(())
+}
 
-    let pre_processor_output_file_name = input_file_path.with_extension("i");
+fn run_preprocessor(input: &std::path::Path) -> anyhow::Result<()> {
+    if input.extension().and_then(|e| e.to_str()) != Some("c") {
+        anyhow::bail!("expected a '.c' file, but got `{}`", input.display());
+    }
+
+    let out = input.with_extension("i");
     let status = Command::new("gcc")
         .args([
             "-E",
             "-P",
-            input_file_path.to_str().unwrap(),
+            input.to_str().unwrap(),
             "-o",
-            pre_processor_output_file_name.to_str().unwrap(),
+            out.to_str().unwrap(),
         ])
         .status()
-        .expect("failed to preprocess the source file");
+        .context("calling gcc for preprocessing step")?;
 
     // Check if command succeeded
     if status.success() {
-        println!(
-            "Preprocessing successful: {}",
-            pre_processor_output_file_name.to_str().unwrap()
-        );
-        //std::fs::remove_file(pre_processor_output_file_name).expect("Failed to remove the preprocessing file despite that gcc reports it created it successfully");
+        println!("Preprocessing successful: {}", out.to_str().unwrap());
+        // std::fs::remove_file(out).context("Removing the preprocessed .i file")?;
     } else {
-        eprintln!("Error: Preprocessing failed");
+        anyhow::bail!("preprocessing failed for `{}`", input.display())
     }
 
     Ok(())
 }
 
-fn run_assemble_and_link(input_file_path: &std::path::Path) -> io::Result<()> {
-    let assembly_file_name = input_file_path.with_extension("s");
+fn run_assemble_and_link(input: &std::path::Path) -> anyhow::Result<()> {
+    let asm = input.with_extension("s");
+    let exe = input.with_extension("");
     let status = Command::new("gcc")
-        .args([
-            assembly_file_name.to_str().unwrap(),
-            "-o",
-            input_file_path.with_extension("").to_str().unwrap(),
-        ])
-        .status()?;
+        .args([asm.to_str().unwrap(), "-o", exe.to_str().unwrap()])
+        .status()
+        .context("calling gcc for assemble and link step")?;
 
     if status.success() {
         println!("Assemble and link successful: {}", "return_2");
-        std::fs::remove_file(assembly_file_name).expect("Failed to remove the assembly file despite that gcc reports it created it successfully");
+        std::fs::remove_file(&asm)
+            .with_context(|| format!("removing temp file `{}`", asm.display()))?
     } else {
-        eprintln!("Error: Preprocessing failed");
+        anyhow::bail!("Assembly & link failed for `{}`", asm.display());
     }
 
     Ok(())

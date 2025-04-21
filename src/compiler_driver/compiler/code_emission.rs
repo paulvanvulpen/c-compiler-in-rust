@@ -74,22 +74,24 @@ fn write_operand(operand: assembly_generator::Operand) -> String {
     match operand {
         assembly_generator::Operand::Register(register) => write_register(register),
         assembly_generator::Operand::Immediate(int) => format!("${int}"),
-        assembly_generator::Operand::Pseudo { .. } => todo!(),
-        assembly_generator::Operand::Stack { .. } => todo!(),
+        assembly_generator::Operand::Pseudo { .. } => {
+            panic!("should have been cleaned up in the assembly_generator")
+        }
+        assembly_generator::Operand::Stack { offset } => format!("{offset}(%rbp)"),
     }
 }
 
 fn write_register(register: assembly_generator::Register) -> String {
     match register {
         assembly_generator::Register::AX => String::from("%eax"),
-        assembly_generator::Register::R10 => String::from("%r10"),
+        assembly_generator::Register::R10 => String::from("%r10d"),
     }
 }
 
 pub fn run_code_emission(
     assembly_ast: assembly_generator::AssemblyAbstractSyntaxTree,
     input_file_path: &std::path::Path,
-) -> std::io::Result<()> {
+) -> anyhow::Result<()> {
     let mut assembly_file = std::fs::File::create(input_file_path.with_extension("s"))?;
     assembly_file.write(write_assembler_ast(assembly_ast).as_bytes())?;
     Ok(())

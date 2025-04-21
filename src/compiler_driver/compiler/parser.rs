@@ -1,5 +1,5 @@
 use super::lexer::Token;
-use std::io;
+use anyhow::anyhow;
 use std::mem::discriminant;
 
 mod visualize;
@@ -44,7 +44,7 @@ pub enum UnaryOperator {
 }
 
 // <program> ::= <function>
-fn parse_program(lexer_tokens: &[Token]) -> io::Result<Program> {
+fn parse_program(lexer_tokens: &[Token]) -> anyhow::Result<Program> {
     match parse_function(lexer_tokens) {
         Ok(function_definition) => Ok(Program::Program(function_definition)),
         Err(e) => Err(e),
@@ -52,7 +52,7 @@ fn parse_program(lexer_tokens: &[Token]) -> io::Result<Program> {
 }
 
 // <function> ::= "int" <identifier> "(" "void" ")" "{" <statement> "}"
-fn parse_function(lexer_tokens: &[Token]) -> io::Result<FunctionDefinition> {
+fn parse_function(lexer_tokens: &[Token]) -> anyhow::Result<FunctionDefinition> {
     let lexer_tokens = expect(Token::TokenInt, lexer_tokens)?;
     let (identifier, lexer_tokens) = parse_identifier(lexer_tokens)?;
     let lexer_tokens = expect(Token::TokenOpenParenthesis, lexer_tokens)?;
@@ -69,7 +69,7 @@ fn parse_function(lexer_tokens: &[Token]) -> io::Result<FunctionDefinition> {
 }
 
 // <identifier> ::= ? An identifier token ?
-fn parse_identifier(lexer_tokens: &[Token]) -> io::Result<(String, &[Token])> {
+fn parse_identifier(lexer_tokens: &[Token]) -> anyhow::Result<(String, &[Token])> {
     match &lexer_tokens[0] {
         Token::TokenIdentifier(identifier) => Ok((identifier.clone(), &lexer_tokens[1..])),
         _ => Err(fail()),
@@ -77,7 +77,7 @@ fn parse_identifier(lexer_tokens: &[Token]) -> io::Result<(String, &[Token])> {
 }
 
 // <statement> ::= "return" <exp> ";"
-fn parse_statement(lexer_tokens: &[Token]) -> io::Result<(Statement, &[Token])> {
+fn parse_statement(lexer_tokens: &[Token]) -> anyhow::Result<(Statement, &[Token])> {
     let lexer_tokens = expect(Token::TokenReturn, lexer_tokens)?;
     let (exp, lexer_tokens) = parse_exp(lexer_tokens)?;
     let lexer_tokens = expect(Token::TokenSemicolon, lexer_tokens)?;
@@ -86,7 +86,7 @@ fn parse_statement(lexer_tokens: &[Token]) -> io::Result<(Statement, &[Token])> 
 
 // <exp> ::= <int> | <unop> <exp> | "(" <exp> ")"
 // <int> ::= ? A constant token ?
-fn parse_exp(lexer_tokens: &[Token]) -> io::Result<(Expression, &[Token])> {
+fn parse_exp(lexer_tokens: &[Token]) -> anyhow::Result<(Expression, &[Token])> {
     match &lexer_tokens[0] {
         Token::TokenTilde | Token::TokenHyphen => {
             let (unary_op, lexer_tokens) = parse_unary_operator(&lexer_tokens)?;
@@ -105,7 +105,7 @@ fn parse_exp(lexer_tokens: &[Token]) -> io::Result<(Expression, &[Token])> {
 }
 
 // <unop> ::= "-" | "~"
-fn parse_unary_operator(lexer_tokens: &[Token]) -> io::Result<(UnaryOperator, &[Token])> {
+fn parse_unary_operator(lexer_tokens: &[Token]) -> anyhow::Result<(UnaryOperator, &[Token])> {
     match &lexer_tokens[0] {
         Token::TokenHyphen => Ok((UnaryOperator::Negate, &lexer_tokens[1..])),
         Token::TokenTilde => Ok((UnaryOperator::Complement, &lexer_tokens[1..])),
@@ -113,7 +113,7 @@ fn parse_unary_operator(lexer_tokens: &[Token]) -> io::Result<(UnaryOperator, &[
     }
 }
 
-fn expect(expected: Token, lexer_tokens: &[Token]) -> io::Result<&[Token]> {
+fn expect(expected: Token, lexer_tokens: &[Token]) -> anyhow::Result<&[Token]> {
     match lexer_tokens {
         t if t.is_empty() || (discriminant(&expected) != discriminant(&lexer_tokens[0])) => {
             Err(fail())
@@ -122,11 +122,11 @@ fn expect(expected: Token, lexer_tokens: &[Token]) -> io::Result<&[Token]> {
     }
 }
 
-fn fail() -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, "Syntax error")
+fn fail() -> anyhow::Error {
+    anyhow!("Syntax error")
 }
 
-pub fn run_parser(lexer_tokens: &[Token]) -> io::Result<AbstractSyntaxTree> {
+pub fn run_parser(lexer_tokens: &[Token]) -> anyhow::Result<AbstractSyntaxTree> {
     let program = parse_program(lexer_tokens)?;
     Ok(AbstractSyntaxTree::Program(program))
 }

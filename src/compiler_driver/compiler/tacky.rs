@@ -131,7 +131,7 @@ fn convert_ast(ast: parser::AbstractSyntaxTree) -> TackyAbstractSyntaxTree {
 
 pub fn run_tacky_generator(
     ast: parser::AbstractSyntaxTree,
-) -> std::io::Result<TackyAbstractSyntaxTree> {
+) -> anyhow::Result<TackyAbstractSyntaxTree> {
     let tacky_ast = convert_ast(ast);
     Ok(tacky_ast)
 }
