@@ -2,7 +2,8 @@ use anyhow::Context;
 use regex::Regex;
 use std::io::{self, BufRead};
 use std::path::Path;
-use unicode_segmentation::UnicodeSegmentation;
+
+use lazy_static::lazy_static;
 
 #[derive(Clone)]
 pub enum Token {
@@ -21,60 +22,70 @@ pub enum Token {
     DoubleHyphen,
 }
 
+lazy_static! {
+    static ref IDENTIFIER_REGEX: Regex = Regex::new(r"^[A-Za-z_]\w*").unwrap();
+    static ref CONSTANT_REGEX: Regex = Regex::new(r"^\d+\b").unwrap();
+    static ref DECREMENT_OPERATOR_REGEX: Regex = Regex::new(r"--\b").unwrap();
+}
+
+fn lex(partial_line: &str) -> (Option<Token>, &str) {
+    let partial_line = partial_line.trim();
+
+    if let Some(token) = IDENTIFIER_REGEX.find(&partial_line) {
+        let (token_str, remainder) = partial_line.split_at(token.end());
+        return match token_str {
+            "int" => (Some(Token::Int), remainder),
+            "void" => (Some(Token::Void), remainder),
+            "return" => (Some(Token::Return), remainder),
+            _ => (Some(Token::Identifier(String::from(token_str))), remainder),
+        };
+    }
+
+    if let Some(token) = CONSTANT_REGEX.find(&partial_line) {
+        let (token_str, remainder) = partial_line.split_at(token.end());
+        return (
+            Some(Token::Constant(token_str.parse::<usize>().unwrap())),
+            remainder,
+        );
+    }
+
+    if let Some(token) = DECREMENT_OPERATOR_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::DoubleHyphen), remainder);
+    }
+
+    if !partial_line.is_empty() {
+        let (token_str, remainder) = partial_line.split_at(1);
+        return match token_str {
+            "(" => (Some(Token::OpenParenthesis), remainder),
+            ")" => (Some(Token::CloseParenthesis), remainder),
+            "{" => (Some(Token::OpenBrace), remainder),
+            "}" => (Some(Token::CloseBrace), remainder),
+            ";" => (Some(Token::Semicolon), remainder),
+            "~" => (Some(Token::Tilde), remainder),
+            "-" => (Some(Token::Hyphen), remainder),
+            _ => (None, remainder),
+        };
+    }
+
+    (None, partial_line)
+}
+
 pub fn run_lexer(input_file_path: &Path) -> anyhow::Result<Vec<Token>> {
     let file = std::fs::File::open(input_file_path)
         .with_context(|| format!("opening `{}`", input_file_path.display()))?;
     let reader = io::BufReader::new(file);
-    let identifier = Regex::new(r"^[a-zA-Z_]\w*").expect("this doesn't define a regex");
-    let constant = Regex::new(r"\d+\b").expect("this doesn't define a regex");
-    let whitespace = Regex::new(r"\s+").expect("this doesn't define a regex");
-    let mut last_found_token: Option<Token> = None;
     let mut out_lexer_tokens = vec![];
 
     for line in reader.lines() {
         let line = line.expect("Failed to read line");
-        for token in line.split_word_bounds() {
-            if let Some(prev_token) = &last_found_token {
-                match (prev_token, token) {
-                    (Token::Hyphen, "-") => {
-                        last_found_token = Some(Token::Hyphen);
-                        if let Some(last_found_lexer_token) = out_lexer_tokens.last_mut() {
-                            *last_found_lexer_token = Token::DoubleHyphen;
-                        }
-                        continue;
-                    }
-                    (Token::DoubleHyphen, "-") => {
-                        anyhow::bail!("Unrecognized token: {}", token)
-                    }
-                    _ => {}
-                }
-            }
+        let mut remainder = line.as_str();
 
-            if whitespace.is_match(&token) {
-                last_found_token = None;
-                continue;
-            }
-
-            let found_token: Option<Token> = match token {
-                "int" => Some(Token::Int),
-                "void" => Some(Token::Void),
-                "return" => Some(Token::Return),
-                "(" => Some(Token::OpenParenthesis),
-                ")" => Some(Token::CloseParenthesis),
-                "{" => Some(Token::OpenBrace),
-                "}" => Some(Token::CloseBrace),
-                ";" => Some(Token::Semicolon),
-                "~" => Some(Token::Tilde),
-                "-" => Some(Token::Hyphen),
-                _ if identifier.is_match(&token) => Some(Token::Identifier(token.to_string())),
-                _ if constant.is_match(&token) => Some(Token::Constant(token.parse::<usize>()?)),
-                _ => None,
-            };
-
-            last_found_token = found_token.clone();
-            out_lexer_tokens.push(
-                found_token.ok_or_else(|| anyhow::anyhow!("Unrecognized token `{}`", token))?,
-            );
+        while !remainder.is_empty() {
+            let (token, new_remainder) = lex(&remainder);
+            out_lexer_tokens
+                .push(token.ok_or_else(|| anyhow::anyhow!("Unrecognized token `{}`", remainder))?);
+            remainder = new_remainder;
         }
     }
 
