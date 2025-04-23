@@ -86,6 +86,7 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> Vec<In
             });
             instructions
         }
+        _ => todo!(),
     }
 }
 fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {

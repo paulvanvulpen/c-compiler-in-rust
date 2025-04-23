@@ -82,8 +82,8 @@ fn run_assemble_and_link(input: &Path) -> Result<()> {
             "Assemble and link successful: {}",
             input.with_extension("c").display()
         );
-        std::fs::remove_file(&asm)
-            .with_context(|| format!("removing temp file `{}`", asm.display()))?
+        // std::fs::remove_file(&asm)
+        //     .with_context(|| format!("removing assembly file `{}`", asm.display()))?
     } else {
         bail!("Assembly & link failed for `{}`.", asm.display());
     }

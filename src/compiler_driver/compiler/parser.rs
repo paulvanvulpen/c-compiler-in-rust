@@ -1,5 +1,5 @@
 use super::lexer::Token;
-use anyhow::anyhow;
+use anyhow::{Error, Result, anyhow};
 use std::mem::discriminant;
 
 mod visualize;
@@ -35,6 +35,11 @@ pub enum Statement {
 pub enum Expression {
     Constant(usize),
     Unary(UnaryOperator, Box<Expression>),
+    BinaryOperation {
+        left_operand: Box<Expression>,
+        binary_operator: BinaryOperator,
+        right_operand: Box<Expression>,
+    },
 }
 
 // <unop>
@@ -43,8 +48,16 @@ pub enum UnaryOperator {
     Negate,
 }
 
+// <binop>
+pub enum BinaryOperator {
+    Subtract,
+    Add,
+    Divide,
+    Modulo,
+}
+
 // <program> ::= <function>
-fn parse_program(lexer_tokens: &[Token]) -> anyhow::Result<Program> {
+fn parse_program(lexer_tokens: &[Token]) -> Result<Program> {
     match parse_function(lexer_tokens) {
         Ok(function_definition) => Ok(Program::Program(function_definition)),
         Err(e) => Err(e),
@@ -52,7 +65,7 @@ fn parse_program(lexer_tokens: &[Token]) -> anyhow::Result<Program> {
 }
 
 // <function> ::= "int" <identifier> "(" "void" ")" "{" <statement> "}"
-fn parse_function(lexer_tokens: &[Token]) -> anyhow::Result<FunctionDefinition> {
+fn parse_function(lexer_tokens: &[Token]) -> Result<FunctionDefinition> {
     let lexer_tokens = expect(Token::Int, lexer_tokens)?;
     let (identifier, lexer_tokens) = parse_identifier(lexer_tokens)?;
     let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)?;
@@ -69,7 +82,7 @@ fn parse_function(lexer_tokens: &[Token]) -> anyhow::Result<FunctionDefinition> 
 }
 
 // <identifier> ::= ? An identifier token ?
-fn parse_identifier(lexer_tokens: &[Token]) -> anyhow::Result<(String, &[Token])> {
+fn parse_identifier(lexer_tokens: &[Token]) -> Result<(String, &[Token])> {
     match &lexer_tokens[0] {
         Token::Identifier(identifier) => Ok((identifier.clone(), &lexer_tokens[1..])),
         _ => Err(fail()),
@@ -77,35 +90,61 @@ fn parse_identifier(lexer_tokens: &[Token]) -> anyhow::Result<(String, &[Token])
 }
 
 // <statement> ::= "return" <exp> ";"
-fn parse_statement(lexer_tokens: &[Token]) -> anyhow::Result<(Statement, &[Token])> {
+fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
     let lexer_tokens = expect(Token::Return, lexer_tokens)?;
-    let (exp, lexer_tokens) = parse_exp(lexer_tokens)?;
+    let (expression, lexer_tokens) = parse_expression(lexer_tokens)?;
     let lexer_tokens = expect(Token::Semicolon, lexer_tokens)?;
-    Ok((Statement::Return(exp), lexer_tokens))
+    Ok((Statement::Return(expression), lexer_tokens))
 }
 
-// <exp> ::= <int> | <unop> <exp> | "(" <exp> ")"
+// <factor> ::= <int> | <unop> <factor> | "(" <exp> ")"
 // <int> ::= ? A constant token ?
-fn parse_exp(lexer_tokens: &[Token]) -> anyhow::Result<(Expression, &[Token])> {
+fn parse_factor(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
     match &lexer_tokens[0] {
         Token::Tilde | Token::Hyphen => {
             let (unary_op, lexer_tokens) = parse_unary_operator(&lexer_tokens)?;
-            let (expr, lexer_tokens) = parse_exp(lexer_tokens)?;
-            Ok((Expression::Unary(unary_op, Box::new(expr)), lexer_tokens))
+            let (factor, lexer_tokens) = parse_factor(lexer_tokens)?;
+            Ok((Expression::Unary(unary_op, Box::new(factor)), lexer_tokens))
         }
         Token::Constant(constant) => Ok((Expression::Constant(*constant), &lexer_tokens[1..])),
         Token::OpenParenthesis => {
             let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)?;
-            let (exp, lexer_tokens) = parse_exp(lexer_tokens)?;
+            let (expression, lexer_tokens) = parse_expression(lexer_tokens)?;
             let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)?;
-            Ok((exp, lexer_tokens))
+            Ok((expression, lexer_tokens))
         }
         _ => Err(fail()),
     }
 }
 
+// <exp> ::= <factor> | <exp> <binop> <exp>
+fn parse_expression(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
+    let (mut left, mut lexer_tokens) = parse_factor(lexer_tokens)?;
+    let mut right;
+    let mut binary_operator;
+    while matches!(&lexer_tokens[0], Token::Hyphen) || matches!(&lexer_tokens[0], Token::Plus) {
+        (binary_operator, lexer_tokens) = parse_binary_operator(&lexer_tokens)?;
+        (right, lexer_tokens) = parse_factor(lexer_tokens)?;
+        left = Expression::BinaryOperation {
+            left_operand: Box::new(left),
+            binary_operator,
+            right_operand: Box::new(right),
+        };
+    }
+
+    Ok((left, lexer_tokens))
+}
+
+fn parse_binary_operator(lexer_tokens: &[Token]) -> Result<(BinaryOperator, &[Token])> {
+    match &lexer_tokens[0] {
+        Token::Plus => Ok((BinaryOperator::Add, &lexer_tokens[1..])),
+        Token::Hyphen => Ok((BinaryOperator::Subtract, &lexer_tokens[1..])),
+        _ => Err(fail()),
+    }
+}
+
 // <unop> ::= "-" | "~"
-fn parse_unary_operator(lexer_tokens: &[Token]) -> anyhow::Result<(UnaryOperator, &[Token])> {
+fn parse_unary_operator(lexer_tokens: &[Token]) -> Result<(UnaryOperator, &[Token])> {
     match &lexer_tokens[0] {
         Token::Hyphen => Ok((UnaryOperator::Negate, &lexer_tokens[1..])),
         Token::Tilde => Ok((UnaryOperator::Complement, &lexer_tokens[1..])),
@@ -113,7 +152,7 @@ fn parse_unary_operator(lexer_tokens: &[Token]) -> anyhow::Result<(UnaryOperator
     }
 }
 
-fn expect(expected: Token, lexer_tokens: &[Token]) -> anyhow::Result<&[Token]> {
+fn expect(expected: Token, lexer_tokens: &[Token]) -> Result<&[Token]> {
     match lexer_tokens {
         t if t.is_empty() || (discriminant(&expected) != discriminant(&lexer_tokens[0])) => {
             Err(fail())
@@ -122,11 +161,11 @@ fn expect(expected: Token, lexer_tokens: &[Token]) -> anyhow::Result<&[Token]> {
     }
 }
 
-fn fail() -> anyhow::Error {
+fn fail() -> Error {
     anyhow!("Syntax error")
 }
 
-pub fn run_parser(lexer_tokens: &[Token]) -> anyhow::Result<AbstractSyntaxTree> {
+pub fn run_parser(lexer_tokens: &[Token]) -> Result<AbstractSyntaxTree> {
     let program = parse_program(lexer_tokens)?;
     Ok(AbstractSyntaxTree::Program(program))
 }

@@ -61,6 +61,29 @@ impl visualize::Visualizer for parser::Expression {
                     boxed_expression.visualize(depth + 1)
                 )
             }
+            parser::Expression::BinaryOperation {
+                left_operand,
+                binary_operator,
+                right_operand,
+            } => {
+                format!(
+                    "{} {} {}",
+                    left_operand.visualize(depth + 1),
+                    binary_operator.visualize(depth + 1),
+                    right_operand.visualize(depth + 1),
+                )
+            }
+        }
+    }
+}
+
+impl visualize::Visualizer for parser::BinaryOperator {
+    fn visualize(&self, _depth: u8) -> String {
+        match self {
+            parser::BinaryOperator::Add => String::from("+"),
+            parser::BinaryOperator::Subtract => String::from("-"),
+            parser::BinaryOperator::Divide => String::from("/"),
+            parser::BinaryOperator::Modulo => String::from("%"),
         }
     }
 }
