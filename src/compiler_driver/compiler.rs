@@ -19,7 +19,7 @@ pub fn run_compiler(args: &Args, input_file_path: &Path) -> Result<()> {
     }
 
     let ast = parser::run_parser(&lexer_tokens)?;
-    info!("AST:\n{}", ast.visualize(0).as_str());
+    info!("\nAST:\n{}", ast.visualize(0).as_str());
 
     if args.parse {
         return Ok(());

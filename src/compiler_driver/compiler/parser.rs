@@ -36,8 +36,8 @@ pub enum Expression {
     Constant(usize),
     Unary(UnaryOperator, Box<Expression>),
     BinaryOperation {
-        left_operand: Box<Expression>,
         binary_operator: BinaryOperator,
+        left_operand: Box<Expression>,
         right_operand: Box<Expression>,
     },
 }
@@ -50,10 +50,23 @@ pub enum UnaryOperator {
 
 // <binop>
 pub enum BinaryOperator {
-    Subtract,
     Add,
+    Subtract,
+    Multiply,
     Divide,
     Modulo,
+}
+
+impl BinaryOperator {
+    fn precedence(&self) -> u8 {
+        match self {
+            BinaryOperator::Multiply => 50,
+            BinaryOperator::Divide => 50,
+            BinaryOperator::Modulo => 50,
+            BinaryOperator::Add => 45,
+            BinaryOperator::Subtract => 45,
+        }
+    }
 }
 
 // <program> ::= <function>
@@ -92,7 +105,7 @@ fn parse_identifier(lexer_tokens: &[Token]) -> Result<(String, &[Token])> {
 // <statement> ::= "return" <exp> ";"
 fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
     let lexer_tokens = expect(Token::Return, lexer_tokens)?;
-    let (expression, lexer_tokens) = parse_expression(lexer_tokens)?;
+    let (expression, lexer_tokens) = parse_expression(lexer_tokens, 0)?;
     let lexer_tokens = expect(Token::Semicolon, lexer_tokens)?;
     Ok((Statement::Return(expression), lexer_tokens))
 }
@@ -109,7 +122,7 @@ fn parse_factor(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
         Token::Constant(constant) => Ok((Expression::Constant(*constant), &lexer_tokens[1..])),
         Token::OpenParenthesis => {
             let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)?;
-            let (expression, lexer_tokens) = parse_expression(lexer_tokens)?;
+            let (expression, lexer_tokens) = parse_expression(lexer_tokens, 0)?;
             let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)?;
             Ok((expression, lexer_tokens))
         }
@@ -117,17 +130,28 @@ fn parse_factor(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
     }
 }
 
+fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
+    match token {
+        Token::Hyphen => Some(BinaryOperator::Subtract.precedence()),
+        Token::Plus => Some(BinaryOperator::Add.precedence()),
+        Token::Asterisk => Some(BinaryOperator::Multiply.precedence()),
+        Token::ForwardSlash => Some(BinaryOperator::Divide.precedence()),
+        Token::PercentSign => Some(BinaryOperator::Modulo.precedence()),
+        _ => None,
+    }
+}
+
 // <exp> ::= <factor> | <exp> <binop> <exp>
-fn parse_expression(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
+fn parse_expression(lexer_tokens: &[Token], min_precedence: u8) -> Result<(Expression, &[Token])> {
     let (mut left, mut lexer_tokens) = parse_factor(lexer_tokens)?;
     let mut right;
     let mut binary_operator;
-    while matches!(&lexer_tokens[0], Token::Hyphen) || matches!(&lexer_tokens[0], Token::Plus) {
+    while get_binary_operator_precedence(&lexer_tokens[0]) > Some(min_precedence) {
         (binary_operator, lexer_tokens) = parse_binary_operator(&lexer_tokens)?;
-        (right, lexer_tokens) = parse_factor(lexer_tokens)?;
+        (right, lexer_tokens) = parse_expression(lexer_tokens, binary_operator.precedence() + 1)?;
         left = Expression::BinaryOperation {
-            left_operand: Box::new(left),
             binary_operator,
+            left_operand: Box::new(left),
             right_operand: Box::new(right),
         };
     }
@@ -139,6 +163,9 @@ fn parse_binary_operator(lexer_tokens: &[Token]) -> Result<(BinaryOperator, &[To
     match &lexer_tokens[0] {
         Token::Plus => Ok((BinaryOperator::Add, &lexer_tokens[1..])),
         Token::Hyphen => Ok((BinaryOperator::Subtract, &lexer_tokens[1..])),
+        Token::Asterisk => Ok((BinaryOperator::Multiply, &lexer_tokens[1..])),
+        Token::ForwardSlash => Ok((BinaryOperator::Divide, &lexer_tokens[1..])),
+        Token::PercentSign => Ok((BinaryOperator::Modulo, &lexer_tokens[1..])),
         _ => Err(fail()),
     }
 }

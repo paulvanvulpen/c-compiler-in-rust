@@ -3,12 +3,12 @@ use crate::compiler_driver::compiler::{parser, visualize};
 impl visualize::Visualizer for parser::Program {
     fn visualize(&self, depth: u8) -> String {
         let parser::Program::Program(function_definition) = self;
-        String::from(format!(
+        format!(
             "Program(\n\
-		{}\n\
-		)",
+        {}\n\
+        )",
             function_definition.visualize(depth + 1)
-        ))
+        )
     }
 }
 
@@ -22,12 +22,12 @@ impl visualize::Visualizer for parser::AbstractSyntaxTree {
 impl visualize::Visualizer for parser::FunctionDefinition {
     fn visualize(&self, depth: u8) -> String {
         let parser::FunctionDefinition::Function { identifier, body } = self;
-        let prefix = "    ".repeat(depth as usize);
+        let indent = "    ";
+        let prefix = indent.repeat(depth as usize);
         format!(
-            "{prefix}Function(\n\
-			{prefix}    name={identifier}\n\
-			{prefix}    body={}\n\
-			{prefix})",
+            "{prefix}Function(name={identifier}, body=\n\
+            {}\n\
+            {prefix})",
             body.visualize(depth + 1)
         )
     }
@@ -37,11 +37,12 @@ impl visualize::Visualizer for parser::Statement {
     fn visualize(&self, depth: u8) -> String {
         let parser::Statement::Return(expression) = self;
         {
-            let prefix = "    ".repeat(depth as usize);
+            let indent = "    ";
+            let prefix = indent.repeat(depth as usize);
             format!(
-                "Return(\n\
-				{prefix}    {}\n\
-				{prefix})",
+                "{prefix}Return(\n\
+                {}\n\
+                {prefix})",
                 expression.visualize(depth + 1)
             )
         }
@@ -50,26 +51,31 @@ impl visualize::Visualizer for parser::Statement {
 
 impl visualize::Visualizer for parser::Expression {
     fn visualize(&self, depth: u8) -> String {
+        let prefix = "    ".repeat(depth as usize);
         match self {
             parser::Expression::Constant(value) => {
-                format!("Constant({value})")
+                format!("{prefix}Constant({value})")
             }
             parser::Expression::Unary(unary_operator, boxed_expression) => {
                 format!(
-                    "{}{}",
+                    "{prefix}{}{}",
                     unary_operator.visualize(depth + 1),
                     boxed_expression.visualize(depth + 1)
                 )
             }
             parser::Expression::BinaryOperation {
-                left_operand,
                 binary_operator,
+                left_operand,
                 right_operand,
             } => {
+                let prefix = "    ".repeat(depth as usize);
                 format!(
-                    "{} {} {}",
-                    left_operand.visualize(depth + 1),
+                    "{prefix}BinaryOperation({}:\n\
+                    {},\n\
+                    {}\n\
+                    {prefix})",
                     binary_operator.visualize(depth + 1),
+                    left_operand.visualize(depth + 1),
                     right_operand.visualize(depth + 1),
                 )
             }
@@ -80,10 +86,11 @@ impl visualize::Visualizer for parser::Expression {
 impl visualize::Visualizer for parser::BinaryOperator {
     fn visualize(&self, _depth: u8) -> String {
         match self {
-            parser::BinaryOperator::Add => String::from("+"),
-            parser::BinaryOperator::Subtract => String::from("-"),
-            parser::BinaryOperator::Divide => String::from("/"),
-            parser::BinaryOperator::Modulo => String::from("%"),
+            parser::BinaryOperator::Add => String::from("Add"),
+            parser::BinaryOperator::Subtract => String::from("Subtract"),
+            parser::BinaryOperator::Multiply => String::from("Multiply"),
+            parser::BinaryOperator::Divide => String::from("Divide"),
+            parser::BinaryOperator::Modulo => String::from("Modulo"),
         }
     }
 }
