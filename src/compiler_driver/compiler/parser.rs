@@ -54,7 +54,7 @@ pub enum BinaryOperator {
     Subtract,
     Multiply,
     Divide,
-    Modulo,
+    Remainder,
 }
 
 impl BinaryOperator {
@@ -62,7 +62,7 @@ impl BinaryOperator {
         match self {
             BinaryOperator::Multiply => 50,
             BinaryOperator::Divide => 50,
-            BinaryOperator::Modulo => 50,
+            BinaryOperator::Remainder => 50,
             BinaryOperator::Add => 45,
             BinaryOperator::Subtract => 45,
         }
@@ -110,6 +110,17 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
     Ok((Statement::Return(expression), lexer_tokens))
 }
 
+fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
+    match token {
+        Token::Hyphen => Some(BinaryOperator::Subtract.precedence()),
+        Token::Plus => Some(BinaryOperator::Add.precedence()),
+        Token::Asterisk => Some(BinaryOperator::Multiply.precedence()),
+        Token::ForwardSlash => Some(BinaryOperator::Divide.precedence()),
+        Token::PercentSign => Some(BinaryOperator::Remainder.precedence()),
+        _ => None,
+    }
+}
+
 // <factor> ::= <int> | <unop> <factor> | "(" <exp> ")"
 // <int> ::= ? A constant token ?
 fn parse_factor(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
@@ -127,17 +138,6 @@ fn parse_factor(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
             Ok((expression, lexer_tokens))
         }
         _ => Err(fail()),
-    }
-}
-
-fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
-    match token {
-        Token::Hyphen => Some(BinaryOperator::Subtract.precedence()),
-        Token::Plus => Some(BinaryOperator::Add.precedence()),
-        Token::Asterisk => Some(BinaryOperator::Multiply.precedence()),
-        Token::ForwardSlash => Some(BinaryOperator::Divide.precedence()),
-        Token::PercentSign => Some(BinaryOperator::Modulo.precedence()),
-        _ => None,
     }
 }
 
@@ -165,7 +165,7 @@ fn parse_binary_operator(lexer_tokens: &[Token]) -> Result<(BinaryOperator, &[To
         Token::Hyphen => Ok((BinaryOperator::Subtract, &lexer_tokens[1..])),
         Token::Asterisk => Ok((BinaryOperator::Multiply, &lexer_tokens[1..])),
         Token::ForwardSlash => Ok((BinaryOperator::Divide, &lexer_tokens[1..])),
-        Token::PercentSign => Ok((BinaryOperator::Modulo, &lexer_tokens[1..])),
+        Token::PercentSign => Ok((BinaryOperator::Remainder, &lexer_tokens[1..])),
         _ => Err(fail()),
     }
 }

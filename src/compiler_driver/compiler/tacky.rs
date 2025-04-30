@@ -27,8 +27,14 @@ pub enum Instruction {
     Return(Val),
     Unary {
         unary_operator: UnaryOperator,
-        src: Val,
-        dst: Val,
+        source: Val,
+        destination: Val,
+    },
+    Binary {
+        binary_operator: BinaryOperator,
+        source1: Val,
+        source2: Val,
+        destination: Val,
     },
 }
 
@@ -37,10 +43,28 @@ pub enum UnaryOperator {
     Negate,
 }
 
+pub enum BinaryOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder,
+}
+
 #[derive(Clone)]
 pub enum Val {
     Constant(usize),
     Var(String),
+}
+
+fn convert_binary_operator(binary_operator: parser::BinaryOperator) -> BinaryOperator {
+    match binary_operator {
+        parser::BinaryOperator::Add => BinaryOperator::Add,
+        parser::BinaryOperator::Subtract => BinaryOperator::Subtract,
+        parser::BinaryOperator::Multiply => BinaryOperator::Multiply,
+        parser::BinaryOperator::Divide => BinaryOperator::Divide,
+        parser::BinaryOperator::Remainder => BinaryOperator::Remainder,
+    }
 }
 
 fn convert_unary_operator(unary_operator: parser::UnaryOperator) -> UnaryOperator {
@@ -56,48 +80,53 @@ fn make_temporary() -> String {
     format!("tmp.{id}")
 }
 
-fn get_destination(instruction_ref: &Instruction) -> Val {
-    match instruction_ref {
-        Instruction::Return(val) => (*val).clone(),
-        Instruction::Unary { dst, .. } => (*dst).clone(),
-    }
-}
-
-fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> Vec<Instruction> {
+fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<Instruction>, Val) {
     match *boxed_expression {
         parser::Expression::Constant(value) => {
-            let mut instructions: Vec<Instruction> = vec![];
-            instructions.push(Instruction::Return(Val::Constant(value)));
-            instructions
+            let instructions: Vec<Instruction> = vec![];
+            (instructions, Val::Constant(value))
         }
         parser::Expression::Unary(unary_operator, boxed_expression) => {
-            let mut instructions = convert_boxed_expression(boxed_expression);
-            let src: Val = match instructions.last() {
-                Some(instruction_ref) => get_destination(instruction_ref),
-                None => panic!("instruction is missing a valid destination"),
-            };
-            let dest_name = make_temporary();
-            let dst = Val::Var(dest_name);
+            let (mut instructions, source) = convert_boxed_expression(boxed_expression);
+            let destination = make_temporary();
+            let destination = Val::Var(destination);
             let unary_operator = convert_unary_operator(unary_operator);
             instructions.push(Instruction::Unary {
                 unary_operator,
-                src,
-                dst,
+                source,
+                destination: destination.clone(),
             });
-            instructions
+            (instructions, destination)
         }
-        _ => todo!(),
+        parser::Expression::BinaryOperation {
+            binary_operator,
+            left_operand,
+            right_operand,
+        } => {
+            let binary_operator = convert_binary_operator(binary_operator);
+            let (mut instructions1, source1) = convert_boxed_expression(left_operand);
+            let (mut instructions2, source2) = convert_boxed_expression(right_operand);
+            instructions1.append(&mut instructions2);
+            let mut instructions = instructions1;
+
+            let destination = make_temporary();
+            let destination = Val::Var(destination);
+            instructions.push(Instruction::Binary {
+                binary_operator,
+                source1,
+                source2,
+                destination: destination.clone(),
+            });
+            (instructions, destination)
+        }
     }
 }
+
 fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
     match statement {
         parser::Statement::Return(expression) => {
-            let mut instructions = convert_boxed_expression(Box::new(expression));
-            let final_destination: Val = match instructions.last() {
-                Some(instruction_ref) => get_destination(instruction_ref),
-                None => panic!("instruction is missing a valid destination"),
-            };
-            instructions.remove(0);
+            let (mut instructions, final_destination) =
+                convert_boxed_expression(Box::new(expression));
             instructions.push(Instruction::Return(final_destination));
             instructions
         }

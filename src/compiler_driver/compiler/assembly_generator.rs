@@ -78,14 +78,18 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
         }
         tacky::Instruction::Unary {
             unary_operator,
-            src,
-            dst,
+            source,
+            destination,
         } => {
             vec![
-                Instruction::Mov(convert_val(src), convert_val(dst.clone())),
-                Instruction::Unary(convert_unary_operator(unary_operator), convert_val(dst)),
+                Instruction::Mov(convert_val(source), convert_val(destination.clone())),
+                Instruction::Unary(
+                    convert_unary_operator(unary_operator),
+                    convert_val(destination),
+                ),
             ]
         }
+        _ => todo!(),
     }
 }
 

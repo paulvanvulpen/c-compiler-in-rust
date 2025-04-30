@@ -90,7 +90,7 @@ impl visualize::Visualizer for parser::BinaryOperator {
             parser::BinaryOperator::Subtract => String::from("Subtract"),
             parser::BinaryOperator::Multiply => String::from("Multiply"),
             parser::BinaryOperator::Divide => String::from("Divide"),
-            parser::BinaryOperator::Modulo => String::from("Modulo"),
+            parser::BinaryOperator::Remainder => String::from("Remainder"),
         }
     }
 }
