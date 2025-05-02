@@ -33,6 +33,9 @@ pub enum FunctionDefinition {
 pub enum Instruction {
     Mov(Operand, Operand),
     Unary(UnaryOperator, Operand),
+    Binary(BinaryOperator, Operand, Operand),
+    Idiv(Operand),
+    Cdq,
     AllocateStack(usize),
     Ret,
 }
@@ -40,6 +43,12 @@ pub enum Instruction {
 pub enum UnaryOperator {
     Neg,
     Not,
+}
+
+pub enum BinaryOperator {
+    Add,
+    Sub,
+    Mult,
 }
 
 pub enum Operand {
@@ -51,7 +60,9 @@ pub enum Operand {
 
 pub enum Register {
     AX,
+    DX,
     R10,
+    R11,
 }
 
 fn convert_val(val: tacky::Val) -> Operand {
@@ -65,6 +76,15 @@ fn convert_unary_operator(unary_operator: tacky::UnaryOperator) -> UnaryOperator
     match unary_operator {
         tacky::UnaryOperator::Complement => UnaryOperator::Not,
         tacky::UnaryOperator::Negate => UnaryOperator::Neg,
+    }
+}
+
+fn convert_binary_operator(binary_operator: tacky::BinaryOperator) -> BinaryOperator {
+    match binary_operator {
+        tacky::BinaryOperator::Add => BinaryOperator::Add,
+        tacky::BinaryOperator::Subtract => BinaryOperator::Sub,
+        tacky::BinaryOperator::Multiply => BinaryOperator::Mult,
+        _ => panic!(),
     }
 }
 
@@ -89,7 +109,44 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
                 ),
             ]
         }
-        _ => todo!(),
+        tacky::Instruction::Binary {
+            binary_operator,
+            source1,
+            source2,
+            destination,
+        } => match binary_operator {
+            tacky::BinaryOperator::Add
+            | tacky::BinaryOperator::Subtract
+            | tacky::BinaryOperator::Multiply => {
+                vec![
+                    Instruction::Mov(
+                        convert_val(source1.clone()),
+                        convert_val(destination.clone()),
+                    ),
+                    Instruction::Binary(
+                        convert_binary_operator(binary_operator),
+                        convert_val(source2),
+                        convert_val(destination),
+                    ),
+                ]
+            }
+            tacky::BinaryOperator::Divide => {
+                vec![
+                    Instruction::Mov(convert_val(source1), Operand::Register(Register::AX)),
+                    Instruction::Cdq,
+                    Instruction::Idiv(convert_val(source2)),
+                    Instruction::Mov(Operand::Register(Register::AX), convert_val(destination)),
+                ]
+            }
+            tacky::BinaryOperator::Remainder => {
+                vec![
+                    Instruction::Mov(convert_val(source1), Operand::Register(Register::AX)),
+                    Instruction::Cdq,
+                    Instruction::Idiv(convert_val(source2)),
+                    Instruction::Mov(Operand::Register(Register::DX), convert_val(destination)),
+                ]
+            }
+        },
     }
 }
 
@@ -165,6 +222,7 @@ pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -
                 replace_pseudo_with_stack(op2);
             }
             Instruction::Ret | Instruction::AllocateStack(_) => {}
+            _ => todo!(),
         }
     }
     alloc_size

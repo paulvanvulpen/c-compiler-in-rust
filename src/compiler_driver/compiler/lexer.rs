@@ -86,7 +86,7 @@ pub fn run_lexer(input_file_path: &Path) -> anyhow::Result<Vec<Token>> {
     let mut out_lexer_tokens = vec![];
 
     for line in reader.lines() {
-        let line = line.expect("Failed to read line");
+        let line = line.context("Reading a line in the input file.")?;
         let mut remainder = line.as_str();
 
         while !remainder.is_empty() {

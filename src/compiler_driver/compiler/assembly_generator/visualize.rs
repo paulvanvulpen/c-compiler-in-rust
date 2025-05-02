@@ -48,7 +48,7 @@ impl visualize::Visualizer for assembly_generator::Operand {
         match self {
             assembly_generator::Operand::Immediate(value) => format!("Imm({value})"),
             assembly_generator::Operand::Register(register) => register.visualize(depth + 1),
-            assembly_generator::Operand::Pseudo { identifier } => format!("Pseudo({identifier}"),
+            assembly_generator::Operand::Pseudo { identifier } => format!("Pseudo({identifier})"),
             assembly_generator::Operand::Stack { offset } => format!("Stack({offset})"),
         }
     }
@@ -60,13 +60,23 @@ impl visualize::Visualizer for assembly_generator::Instruction {
             assembly_generator::Instruction::Mov(op1, op2) => format!(
                 "Mov({}, {})",
                 op1.visualize(depth + 1),
-                op2.visualize(depth + 1)
+                op2.visualize(depth + 1),
             ),
-            assembly_generator::Instruction::Unary(unary_operator, dst) => format!(
+            assembly_generator::Instruction::Unary(unary_operator, op) => format!(
                 "Unary({}, {})",
                 unary_operator.visualize(depth + 1),
-                dst.visualize(depth + 1)
+                op.visualize(depth + 1),
             ),
+            assembly_generator::Instruction::Binary(binary_operator, op1, op2) => format!(
+                "Binary({}, {}, {})",
+                binary_operator.visualize(depth + 1),
+                op1.visualize(depth + 1),
+                op2.visualize(depth + 1),
+            ),
+            assembly_generator::Instruction::Idiv(op) => {
+                format!("Idiv({})", op.visualize(depth + 1),)
+            }
+            assembly_generator::Instruction::Cdq => String::from("Cdq"),
             assembly_generator::Instruction::AllocateStack(int) => {
                 format!("AllocateStack({})", int)
             }
@@ -79,7 +89,9 @@ impl visualize::Visualizer for assembly_generator::Register {
     fn visualize(&self, _depth: u8) -> String {
         match self {
             assembly_generator::Register::AX => String::from("Reg(AX)"),
+            assembly_generator::Register::DX => String::from("Reg(DX)"),
             assembly_generator::Register::R10 => String::from("Reg(R10)"),
+            assembly_generator::Register::R11 => String::from("Reg(R11)"),
         }
     }
 }
@@ -89,6 +101,16 @@ impl visualize::Visualizer for assembly_generator::UnaryOperator {
         match self {
             assembly_generator::UnaryOperator::Neg => String::from("Neg"),
             assembly_generator::UnaryOperator::Not => String::from("Not"),
+        }
+    }
+}
+
+impl visualize::Visualizer for assembly_generator::BinaryOperator {
+    fn visualize(&self, _depth: u8) -> String {
+        match self {
+            assembly_generator::BinaryOperator::Add => String::from("Add"),
+            assembly_generator::BinaryOperator::Sub => String::from("Sub"),
+            assembly_generator::BinaryOperator::Mult => String::from("Mult"),
         }
     }
 }

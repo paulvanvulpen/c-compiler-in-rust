@@ -67,6 +67,7 @@ fn write_instruction(instruction: assembly_generator::Instruction) -> String {
             {prefix}popq\t%rbp\n\
             {prefix}ret\n"
         ),
+        _ => panic!(),
     }
 }
 
@@ -85,6 +86,9 @@ fn write_register(register: assembly_generator::Register) -> String {
     match register {
         assembly_generator::Register::AX => String::from("%eax"),
         assembly_generator::Register::R10 => String::from("%r10d"),
+        _ => {
+            panic!()
+        }
     }
 }
 
