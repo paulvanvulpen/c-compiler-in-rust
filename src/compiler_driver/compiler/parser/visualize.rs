@@ -91,6 +91,11 @@ impl visualize::Visualizer for parser::BinaryOperator {
             parser::BinaryOperator::Multiply => String::from("Multiply"),
             parser::BinaryOperator::Divide => String::from("Divide"),
             parser::BinaryOperator::Remainder => String::from("Remainder"),
+            parser::BinaryOperator::LeftShift => String::from("LeftShift"),
+            parser::BinaryOperator::RightShift => String::from("RightShift"),
+            parser::BinaryOperator::BitwiseAnd => String::from("BitwiseAnd"),
+            parser::BinaryOperator::BitwiseXOr => String::from("BitwiseXOr"),
+            parser::BinaryOperator::BitwiseOr => String::from("BitwiseOr"),
         }
     }
 }

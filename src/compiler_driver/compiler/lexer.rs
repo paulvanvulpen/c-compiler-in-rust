@@ -37,12 +37,12 @@ pub enum Token {
 
 lazy_static! {
     static ref IDENTIFIER_REGEX: Regex = Regex::new(r"^[A-Za-z_]\w*").unwrap();
-    static ref CONSTANT_REGEX: Regex = Regex::new(r"^\d+\b").unwrap();
-    static ref DECREMENT_OPERATOR_REGEX: Regex = Regex::new(r"--\b").unwrap();
-    static ref LOGICAL_OR_REGEX: Regex = Regex::new(r"\|\|\b").unwrap();
-    static ref LOGICAL_AND_REGEX: Regex = Regex::new(r"&&\b").unwrap();
-    static ref LOGICAL_SHIFT_LEFT_REGEX: Regex = Regex::new(r"<<\b").unwrap();
-    static ref LOGICAL_SHIFT_RIGHT_REGEX: Regex = Regex::new(r">>\b").unwrap();
+    static ref CONSTANT_REGEX: Regex = Regex::new(r"^\d+").unwrap();
+    static ref DECREMENT_OPERATOR_REGEX: Regex = Regex::new(r"^--").unwrap();
+    static ref LOGICAL_OR_REGEX: Regex = Regex::new(r"^\|\|").unwrap();
+    static ref LOGICAL_AND_REGEX: Regex = Regex::new(r"^&&").unwrap();
+    static ref LOGICAL_SHIFT_LEFT_REGEX: Regex = Regex::new(r"^<<").unwrap();
+    static ref LOGICAL_SHIFT_RIGHT_REGEX: Regex = Regex::new(r"^>>").unwrap();
 }
 
 fn lex(partial_line: &str) -> (Option<Token>, &str) {

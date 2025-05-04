@@ -55,6 +55,11 @@ pub enum BinaryOperator {
     Multiply,
     Divide,
     Remainder,
+    LeftShift,
+    RightShift,
+    BitwiseAnd,
+    BitwiseXOr,
+    BitwiseOr,
 }
 
 impl BinaryOperator {
@@ -65,6 +70,11 @@ impl BinaryOperator {
             BinaryOperator::Remainder => 50,
             BinaryOperator::Add => 45,
             BinaryOperator::Subtract => 45,
+            BinaryOperator::LeftShift => 40,
+            BinaryOperator::RightShift => 40,
+            BinaryOperator::BitwiseAnd => 35,
+            BinaryOperator::BitwiseXOr => 34,
+            BinaryOperator::BitwiseOr => 33,
         }
     }
 }
@@ -117,6 +127,11 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         Token::Asterisk => Some(BinaryOperator::Multiply.precedence()),
         Token::ForwardSlash => Some(BinaryOperator::Divide.precedence()),
         Token::PercentSign => Some(BinaryOperator::Remainder.precedence()),
+        Token::DoubleOpenAngleBracket => Some(BinaryOperator::LeftShift.precedence()),
+        Token::DoubleCloseAngleBracket => Some(BinaryOperator::RightShift.precedence()),
+        Token::Ampersand => Some(BinaryOperator::BitwiseAnd.precedence()),
+        Token::Caret => Some(BinaryOperator::BitwiseXOr.precedence()),
+        Token::Pipe => Some(BinaryOperator::BitwiseOr.precedence()),
         _ => None,
     }
 }
@@ -146,7 +161,7 @@ fn parse_expression(lexer_tokens: &[Token], min_precedence: u8) -> Result<(Expre
     let (mut left, mut lexer_tokens) = parse_factor(lexer_tokens)?;
     let mut right;
     let mut binary_operator;
-    while get_binary_operator_precedence(&lexer_tokens[0]) > Some(min_precedence) {
+    while get_binary_operator_precedence(&lexer_tokens[0]) >= Some(min_precedence) {
         (binary_operator, lexer_tokens) = parse_binary_operator(&lexer_tokens)?;
         (right, lexer_tokens) = parse_expression(lexer_tokens, binary_operator.precedence() + 1)?;
         left = Expression::BinaryOperation {
@@ -166,6 +181,11 @@ fn parse_binary_operator(lexer_tokens: &[Token]) -> Result<(BinaryOperator, &[To
         Token::Asterisk => Ok((BinaryOperator::Multiply, &lexer_tokens[1..])),
         Token::ForwardSlash => Ok((BinaryOperator::Divide, &lexer_tokens[1..])),
         Token::PercentSign => Ok((BinaryOperator::Remainder, &lexer_tokens[1..])),
+        Token::DoubleOpenAngleBracket => Ok((BinaryOperator::LeftShift, &lexer_tokens[1..])),
+        Token::DoubleCloseAngleBracket => Ok((BinaryOperator::RightShift, &lexer_tokens[1..])),
+        Token::Ampersand => Ok((BinaryOperator::BitwiseAnd, &lexer_tokens[1..])),
+        Token::Caret => Ok((BinaryOperator::BitwiseXOr, &lexer_tokens[1..])),
+        Token::Pipe => Ok((BinaryOperator::BitwiseOr, &lexer_tokens[1..])),
         _ => Err(fail()),
     }
 }

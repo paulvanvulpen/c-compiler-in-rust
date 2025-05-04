@@ -90,6 +90,11 @@ impl visualize::Visualizer for tacky::BinaryOperator {
             tacky::BinaryOperator::Multiply => String::from("Multiply"),
             tacky::BinaryOperator::Divide => String::from("Divide"),
             tacky::BinaryOperator::Remainder => String::from("Remainder"),
+            tacky::BinaryOperator::LeftShift => String::from("LeftShift"),
+            tacky::BinaryOperator::RightShift => String::from("RightShift"),
+            tacky::BinaryOperator::BitwiseAnd => String::from("BitwiseAnd"),
+            tacky::BinaryOperator::BitwiseXOr => String::from("BitwiseXOr"),
+            tacky::BinaryOperator::BitwiseOr => String::from("BitwiseOr"),
         }
     }
 }

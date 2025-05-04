@@ -89,6 +89,7 @@ impl visualize::Visualizer for assembly_generator::Register {
     fn visualize(&self, _depth: u8) -> String {
         match self {
             assembly_generator::Register::AX => String::from("Reg(AX)"),
+            assembly_generator::Register::CX => String::from("Reg(CX)"),
             assembly_generator::Register::DX => String::from("Reg(DX)"),
             assembly_generator::Register::R10 => String::from("Reg(R10)"),
             assembly_generator::Register::R11 => String::from("Reg(R11)"),
@@ -111,6 +112,11 @@ impl visualize::Visualizer for assembly_generator::BinaryOperator {
             assembly_generator::BinaryOperator::Add => String::from("Add"),
             assembly_generator::BinaryOperator::Sub => String::from("Sub"),
             assembly_generator::BinaryOperator::Mult => String::from("Mult"),
+            assembly_generator::BinaryOperator::LShift => String::from("LShift"),
+            assembly_generator::BinaryOperator::RShift => String::from("RShift"),
+            assembly_generator::BinaryOperator::BitAnd => String::from("BitAnd"),
+            assembly_generator::BinaryOperator::BitXOr => String::from("BitXOr"),
+            assembly_generator::BinaryOperator::BitOr => String::from("BitOr"),
         }
     }
 }

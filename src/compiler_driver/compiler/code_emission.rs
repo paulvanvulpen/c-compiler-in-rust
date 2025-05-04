@@ -53,6 +53,11 @@ fn write_binary_operator(binary_operator: assembly_generator::BinaryOperator) ->
         assembly_generator::BinaryOperator::Add => String::from("addl"),
         assembly_generator::BinaryOperator::Sub => String::from("subl"),
         assembly_generator::BinaryOperator::Mult => String::from("imull"),
+        assembly_generator::BinaryOperator::LShift => String::from("shll"),
+        assembly_generator::BinaryOperator::RShift => String::from("shrl"),
+        assembly_generator::BinaryOperator::BitAnd => String::from("andl"),
+        assembly_generator::BinaryOperator::BitXOr => String::from("xorl"),
+        assembly_generator::BinaryOperator::BitOr => String::from("orl "),
     }
 }
 
@@ -70,12 +75,27 @@ fn write_instruction(instruction: assembly_generator::Instruction) -> String {
             )
         }
         assembly_generator::Instruction::Binary(binary_operator, source, destination) => {
-            format!(
-                "{}\t{}, {}\n",
-                write_binary_operator(binary_operator),
-                write_operand(source),
-                write_operand(destination)
-            )
+            if matches!(
+                (&binary_operator, &source),
+                (
+                    assembly_generator::BinaryOperator::LShift
+                        | assembly_generator::BinaryOperator::RShift,
+                    assembly_generator::Operand::Register(assembly_generator::Register::CX)
+                )
+            ) {
+                format!(
+                    "{}\t%cl, {}\n",
+                    write_binary_operator(binary_operator),
+                    write_operand(destination)
+                )
+            } else {
+                format!(
+                    "{}\t{}, {}\n",
+                    write_binary_operator(binary_operator),
+                    write_operand(source),
+                    write_operand(destination)
+                )
+            }
         }
         assembly_generator::Instruction::Idiv(operand) => {
             format!("idivl\t{}\n", write_operand(operand))
@@ -104,6 +124,7 @@ fn write_operand(operand: assembly_generator::Operand) -> String {
 fn write_register(register: assembly_generator::Register) -> String {
     match register {
         assembly_generator::Register::AX => String::from("%eax"),
+        assembly_generator::Register::CX => String::from("%ecx"),
         assembly_generator::Register::DX => String::from("%edx"),
         assembly_generator::Register::R10 => String::from("%r10d"),
         assembly_generator::Register::R11 => String::from("%r11d"),

@@ -49,6 +49,11 @@ pub enum BinaryOperator {
     Multiply,
     Divide,
     Remainder,
+    LeftShift,
+    RightShift,
+    BitwiseAnd,
+    BitwiseXOr,
+    BitwiseOr,
 }
 
 #[derive(Clone)]
@@ -64,6 +69,11 @@ fn convert_binary_operator(binary_operator: parser::BinaryOperator) -> BinaryOpe
         parser::BinaryOperator::Multiply => BinaryOperator::Multiply,
         parser::BinaryOperator::Divide => BinaryOperator::Divide,
         parser::BinaryOperator::Remainder => BinaryOperator::Remainder,
+        parser::BinaryOperator::LeftShift => BinaryOperator::LeftShift,
+        parser::BinaryOperator::RightShift => BinaryOperator::RightShift,
+        parser::BinaryOperator::BitwiseAnd => BinaryOperator::BitwiseAnd,
+        parser::BinaryOperator::BitwiseXOr => BinaryOperator::BitwiseXOr,
+        parser::BinaryOperator::BitwiseOr => BinaryOperator::BitwiseOr,
     }
 }
 

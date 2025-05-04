@@ -49,6 +49,11 @@ pub enum BinaryOperator {
     Add,
     Sub,
     Mult,
+    LShift,
+    RShift,
+    BitAnd,
+    BitXOr,
+    BitOr,
 }
 
 #[derive(Clone)]
@@ -62,6 +67,7 @@ pub enum Operand {
 #[derive(Clone)]
 pub enum Register {
     AX,
+    CX,
     DX,
     R10,
     R11,
@@ -86,6 +92,11 @@ fn convert_binary_operator(binary_operator: tacky::BinaryOperator) -> BinaryOper
         tacky::BinaryOperator::Add => BinaryOperator::Add,
         tacky::BinaryOperator::Subtract => BinaryOperator::Sub,
         tacky::BinaryOperator::Multiply => BinaryOperator::Mult,
+        tacky::BinaryOperator::LeftShift => BinaryOperator::LShift,
+        tacky::BinaryOperator::RightShift => BinaryOperator::RShift,
+        tacky::BinaryOperator::BitwiseAnd => BinaryOperator::BitAnd,
+        tacky::BinaryOperator::BitwiseXOr => BinaryOperator::BitXOr,
+        tacky::BinaryOperator::BitwiseOr => BinaryOperator::BitOr,
         _ => panic!(),
     }
 }
@@ -119,7 +130,12 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
         } => match binary_operator {
             tacky::BinaryOperator::Add
             | tacky::BinaryOperator::Subtract
-            | tacky::BinaryOperator::Multiply => {
+            | tacky::BinaryOperator::Multiply
+            | tacky::BinaryOperator::LeftShift
+            | tacky::BinaryOperator::RightShift
+            | tacky::BinaryOperator::BitwiseAnd
+            | tacky::BinaryOperator::BitwiseXOr
+            | tacky::BinaryOperator::BitwiseOr => {
                 vec![
                     Instruction::Mov(
                         convert_val(source1.clone()),
@@ -243,7 +259,11 @@ fn split_mem_to_mem_instruction(instruction: Instruction) -> Vec<Instruction> {
             Instruction::Mov(Operand::Register(Register::R10), op2),
         ],
         Instruction::Binary(
-            binary_operator @ (BinaryOperator::Add | BinaryOperator::Sub),
+            binary_operator @ (BinaryOperator::Add
+            | BinaryOperator::Sub
+            | BinaryOperator::BitAnd
+            | BinaryOperator::BitXOr
+            | BinaryOperator::BitOr),
             op1 @ Operand::Stack { .. },
             op2 @ Operand::Stack { .. },
         ) => vec![
@@ -255,6 +275,15 @@ fn split_mem_to_mem_instruction(instruction: Instruction) -> Vec<Instruction> {
             Instruction::Binary(BinaryOperator::Mult, op1, Operand::Register(Register::R11)),
             Instruction::Mov(Operand::Register(Register::R11), op2),
         ],
+        Instruction::Binary(
+            binary_operator @ (BinaryOperator::LShift | BinaryOperator::RShift),
+            op1,
+            op2,
+        ) if !matches!(op1, Operand::Immediate(_) | Operand::Register(Register::CX)) => vec![
+            Instruction::Mov(op1, Operand::Register(Register::CX)),
+            Instruction::Binary(binary_operator, Operand::Register(Register::CX), op2),
+        ],
+
         Instruction::Idiv(op1 @ Operand::Immediate { .. }) => vec![
             Instruction::Mov(op1, Operand::Register(Register::R10)),
             Instruction::Idiv(Operand::Register(Register::R10)),
@@ -263,7 +292,7 @@ fn split_mem_to_mem_instruction(instruction: Instruction) -> Vec<Instruction> {
     }
 }
 
-fn fix_up_unpack_mem_to_mem_mov_instruction(instructions: Vec<Instruction>) -> Vec<Instruction> {
+fn fix_up_instructions(instructions: Vec<Instruction>) -> Vec<Instruction> {
     instructions
         .into_iter()
         .flat_map(split_mem_to_mem_instruction)
@@ -284,5 +313,5 @@ pub fn fix_up_invalid_instructions(
     }
 
     let old = std::mem::take(instructions);
-    *instructions = fix_up_unpack_mem_to_mem_mov_instruction(old);
+    *instructions = fix_up_instructions(old);
 }
