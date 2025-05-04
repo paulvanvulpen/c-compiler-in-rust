@@ -51,6 +51,7 @@ pub enum BinaryOperator {
     Mult,
 }
 
+#[derive(Clone)]
 pub enum Operand {
     Immediate(usize),
     Register(Register),
@@ -58,6 +59,7 @@ pub enum Operand {
     Stack { offset: isize },
 }
 
+#[derive(Clone)]
 pub enum Register {
     AX,
     DX,
@@ -214,15 +216,21 @@ pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -
 
     for instruction in instructions.iter_mut() {
         match instruction {
-            Instruction::Unary(.., operand) => {
-                replace_pseudo_with_stack(operand);
-            }
             Instruction::Mov(op1, op2) => {
                 replace_pseudo_with_stack(op1);
                 replace_pseudo_with_stack(op2);
             }
-            Instruction::Ret | Instruction::AllocateStack(_) => {}
-            _ => todo!(),
+            Instruction::Unary(.., operand) => {
+                replace_pseudo_with_stack(operand);
+            }
+            Instruction::Binary(.., op1, op2) => {
+                replace_pseudo_with_stack(op1);
+                replace_pseudo_with_stack(op2);
+            }
+            Instruction::Idiv(operand) => {
+                replace_pseudo_with_stack(operand);
+            }
+            Instruction::Ret | Instruction::AllocateStack(_) | Instruction::Cdq => {}
         }
     }
     alloc_size
@@ -233,6 +241,23 @@ fn split_mem_to_mem_instruction(instruction: Instruction) -> Vec<Instruction> {
         Instruction::Mov(op1 @ Operand::Stack { .. }, op2 @ Operand::Stack { .. }) => vec![
             Instruction::Mov(op1, Operand::Register(Register::R10)),
             Instruction::Mov(Operand::Register(Register::R10), op2),
+        ],
+        Instruction::Binary(
+            binary_operator @ (BinaryOperator::Add | BinaryOperator::Sub),
+            op1 @ Operand::Stack { .. },
+            op2 @ Operand::Stack { .. },
+        ) => vec![
+            Instruction::Mov(op1, Operand::Register(Register::R10)),
+            Instruction::Binary(binary_operator, Operand::Register(Register::R10), op2),
+        ],
+        Instruction::Binary(BinaryOperator::Mult, op1, op2 @ Operand::Stack { .. }) => vec![
+            Instruction::Mov(op2.clone(), Operand::Register(Register::R11)),
+            Instruction::Binary(BinaryOperator::Mult, op1, Operand::Register(Register::R11)),
+            Instruction::Mov(Operand::Register(Register::R11), op2),
+        ],
+        Instruction::Idiv(op1 @ Operand::Immediate { .. }) => vec![
+            Instruction::Mov(op1, Operand::Register(Register::R10)),
+            Instruction::Idiv(Operand::Register(Register::R10)),
         ],
         other => vec![other],
     }
