@@ -48,6 +48,14 @@ fn write_unary_operator(unary_operator: assembly_generator::UnaryOperator) -> St
     }
 }
 
+fn write_binary_operator(binary_operator: assembly_generator::BinaryOperator) -> String {
+    match binary_operator {
+        assembly_generator::BinaryOperator::Add => String::from("addl"),
+        assembly_generator::BinaryOperator::Sub => String::from("subl"),
+        assembly_generator::BinaryOperator::Mult => String::from("imull"),
+    }
+}
+
 fn write_instruction(instruction: assembly_generator::Instruction) -> String {
     let prefix = "    ";
     match instruction {
@@ -61,13 +69,24 @@ fn write_instruction(instruction: assembly_generator::Instruction) -> String {
                 write_operand(operand)
             )
         }
+        assembly_generator::Instruction::Binary(binary_operator, source, destination) => {
+            format!(
+                "{}\t{}, {}\n",
+                write_binary_operator(binary_operator),
+                write_operand(source),
+                write_operand(destination)
+            )
+        }
+        assembly_generator::Instruction::Idiv(operand) => {
+            format!("idivl\t{}\n", write_operand(operand))
+        }
+        assembly_generator::Instruction::Cdq => String::from("cdq\n"),
         assembly_generator::Instruction::AllocateStack(size) => format!("subq\t${size}, %rsp\n"),
         assembly_generator::Instruction::Ret => format!(
             "movq\t%rbp, %rsp\n\
             {prefix}popq\t%rbp\n\
             {prefix}ret\n"
         ),
-        _ => panic!(),
     }
 }
 
@@ -85,10 +104,9 @@ fn write_operand(operand: assembly_generator::Operand) -> String {
 fn write_register(register: assembly_generator::Register) -> String {
     match register {
         assembly_generator::Register::AX => String::from("%eax"),
+        assembly_generator::Register::DX => String::from("%edx"),
         assembly_generator::Register::R10 => String::from("%r10d"),
-        _ => {
-            panic!()
-        }
+        assembly_generator::Register::R11 => String::from("%r11d"),
     }
 }
 
