@@ -53,8 +53,12 @@ fn write_binary_operator(binary_operator: assembly_generator::BinaryOperator) ->
         assembly_generator::BinaryOperator::Add => String::from("addl"),
         assembly_generator::BinaryOperator::Sub => String::from("subl"),
         assembly_generator::BinaryOperator::Mult => String::from("imull"),
-        assembly_generator::BinaryOperator::LShift => String::from("shll"),
-        assembly_generator::BinaryOperator::RShift => String::from("shrl"),
+
+        //https://c9x.me/x86/html/file_module_x86_id_285.html
+        // in current version assuming all values are signed 32-bit values. (using SAR, not SHR)
+        assembly_generator::BinaryOperator::LShift => String::from("sall"),
+        assembly_generator::BinaryOperator::RShift => String::from("sarl"),
+
         assembly_generator::BinaryOperator::BitAnd => String::from("andl"),
         assembly_generator::BinaryOperator::BitXOr => String::from("xorl"),
         assembly_generator::BinaryOperator::BitOr => String::from("orl "),

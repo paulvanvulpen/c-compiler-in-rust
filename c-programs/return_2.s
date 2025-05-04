@@ -4,9 +4,9 @@ main:
     movq	%rsp, %rbp
     subq	$20, %rsp
     movl	$80, -4(%rbp)
-    shrl	$2, -4(%rbp)
+    sarl	$2, -4(%rbp)
     movl	$7, -8(%rbp)
-    shll	$1, -8(%rbp)
+    sall	$1, -8(%rbp)
     movl	$5, -12(%rbp)
     movl	-8(%rbp), %r10d
     andl	%r10d, -12(%rbp)
