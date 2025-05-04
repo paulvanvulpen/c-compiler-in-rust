@@ -24,12 +24,25 @@ pub enum Token {
     Asterisk,
     ForwardSlash,
     PercentSign,
+    Pipe,
+    DoublePipe,
+    Ampersand,
+    DoubleAmpersand,
+    Caret,
+    OpenAngleBracket,
+    DoubleOpenAngleBracket,
+    CloseAngleBracket,
+    DoubleCloseAngleBracket,
 }
 
 lazy_static! {
     static ref IDENTIFIER_REGEX: Regex = Regex::new(r"^[A-Za-z_]\w*").unwrap();
     static ref CONSTANT_REGEX: Regex = Regex::new(r"^\d+\b").unwrap();
     static ref DECREMENT_OPERATOR_REGEX: Regex = Regex::new(r"--\b").unwrap();
+    static ref LOGICAL_OR_REGEX: Regex = Regex::new(r"\|\|\b").unwrap();
+    static ref LOGICAL_AND_REGEX: Regex = Regex::new(r"&&\b").unwrap();
+    static ref LOGICAL_SHIFT_LEFT_REGEX: Regex = Regex::new(r"<<\b").unwrap();
+    static ref LOGICAL_SHIFT_RIGHT_REGEX: Regex = Regex::new(r">>\b").unwrap();
 }
 
 fn lex(partial_line: &str) -> (Option<Token>, &str) {
@@ -58,6 +71,26 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
         return (Some(Token::DoubleHyphen), remainder);
     }
 
+    if let Some(token) = LOGICAL_OR_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::DoublePipe), remainder);
+    }
+
+    if let Some(token) = LOGICAL_AND_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::DoubleAmpersand), remainder);
+    }
+
+    if let Some(token) = LOGICAL_SHIFT_LEFT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::DoubleOpenAngleBracket), remainder);
+    }
+
+    if let Some(token) = LOGICAL_SHIFT_RIGHT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::DoubleCloseAngleBracket), remainder);
+    }
+
     if !partial_line.is_empty() {
         let (token_str, remainder) = partial_line.split_at(1);
         return match token_str {
@@ -72,6 +105,11 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
             "*" => (Some(Token::Asterisk), remainder),
             "/" => (Some(Token::ForwardSlash), remainder),
             "%" => (Some(Token::PercentSign), remainder),
+            "|" => (Some(Token::Pipe), remainder),
+            "&" => (Some(Token::Ampersand), remainder),
+            "^" => (Some(Token::Caret), remainder),
+            "<" => (Some(Token::OpenAngleBracket), remainder),
+            ">" => (Some(Token::CloseAngleBracket), remainder),
             _ => (None, remainder),
         };
     }
