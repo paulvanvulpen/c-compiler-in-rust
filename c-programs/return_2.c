@@ -7,5 +7,6 @@ int main(void)
 //    return 6/3/2;
 //    return 5 * 4 / 2 - 3 % (2 + 1);
 //    return 3<<6;
-      return 80 >> 2 | 1 ^ 5 & 7 << 1;
+//      return 80 >> 2 | 1 ^ 5 & 7 << 1;
+    return 1foo;
 }
