@@ -8,8 +8,10 @@ mod visualize;
 // program = Program(function_definition)
 // function_definition = Function(identifier name, statement body)
 // statement = Return(exp)
-// exp = Constant(int) | Unary(unary_operator, exp)
-// unary_operator = Complement | Negate
+// exp = Constant(int) | Unary(unary_operator, exp) | Binary(binary_operator, exp, exp)
+// unary_operator = Complement | Negate | Not
+// binary_operator = Add | Subtract | Multiply | Divide | Remainder | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual
+//
 pub enum AbstractSyntaxTree {
     Program(Program),
 }
@@ -46,6 +48,7 @@ pub enum Expression {
 pub enum UnaryOperator {
     Complement,
     Negate,
+    Not,
 }
 
 // <binop>
@@ -60,6 +63,14 @@ pub enum BinaryOperator {
     BitwiseAnd,
     BitwiseXOr,
     BitwiseOr,
+    And,
+    Or,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessOrEqual,
+    GreaterThan,
+    GreaterOrEqual,
 }
 
 impl BinaryOperator {
@@ -72,9 +83,17 @@ impl BinaryOperator {
             BinaryOperator::Subtract => 45,
             BinaryOperator::LeftShift => 40,
             BinaryOperator::RightShift => 40,
+            BinaryOperator::LessThan => 37,
+            BinaryOperator::LessOrEqual => 37,
+            BinaryOperator::GreaterThan => 37,
+            BinaryOperator::GreaterOrEqual => 37,
+            BinaryOperator::Equal => 36,
+            BinaryOperator::NotEqual => 36,
             BinaryOperator::BitwiseAnd => 35,
             BinaryOperator::BitwiseXOr => 34,
             BinaryOperator::BitwiseOr => 33,
+            BinaryOperator::And => 10,
+            BinaryOperator::Or => 5,
         }
     }
 }
@@ -132,6 +151,15 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         Token::Ampersand => Some(BinaryOperator::BitwiseAnd.precedence()),
         Token::Caret => Some(BinaryOperator::BitwiseXOr.precedence()),
         Token::Pipe => Some(BinaryOperator::BitwiseOr.precedence()),
+        Token::DoubleAmpersand => Some(BinaryOperator::And.precedence()),
+        Token::DoublePipe => Some(BinaryOperator::Or.precedence()),
+        Token::DoubleEqual => Some(BinaryOperator::Equal.precedence()),
+        Token::ExclamationEqual => Some(BinaryOperator::NotEqual.precedence()),
+        Token::OpenAngleBracket => Some(BinaryOperator::LessThan.precedence()),
+        Token::OpenAngleBracketEqual => Some(BinaryOperator::LessOrEqual.precedence()),
+        Token::CloseAngleBracket => Some(BinaryOperator::GreaterThan.precedence()),
+        Token::CloseAngleBracketEqual => Some(BinaryOperator::GreaterOrEqual.precedence()),
+
         _ => None,
     }
 }
@@ -140,7 +168,7 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
 // <int> ::= ? A constant token ?
 fn parse_factor(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
     match &lexer_tokens[0] {
-        Token::Tilde | Token::Hyphen => {
+        Token::Tilde | Token::Hyphen | Token::Exclamation => {
             let (unary_op, lexer_tokens) = parse_unary_operator(&lexer_tokens)?;
             let (factor, lexer_tokens) = parse_factor(lexer_tokens)?;
             Ok((Expression::Unary(unary_op, Box::new(factor)), lexer_tokens))
@@ -186,15 +214,24 @@ fn parse_binary_operator(lexer_tokens: &[Token]) -> Result<(BinaryOperator, &[To
         Token::Ampersand => Ok((BinaryOperator::BitwiseAnd, &lexer_tokens[1..])),
         Token::Caret => Ok((BinaryOperator::BitwiseXOr, &lexer_tokens[1..])),
         Token::Pipe => Ok((BinaryOperator::BitwiseOr, &lexer_tokens[1..])),
+        Token::DoubleAmpersand => Ok((BinaryOperator::And, &lexer_tokens[1..])),
+        Token::DoublePipe => Ok((BinaryOperator::Or, &lexer_tokens[1..])),
+        Token::DoubleEqual => Ok((BinaryOperator::Equal, &lexer_tokens[1..])),
+        Token::ExclamationEqual => Ok((BinaryOperator::NotEqual, &lexer_tokens[1..])),
+        Token::OpenAngleBracket => Ok((BinaryOperator::LessThan, &lexer_tokens[1..])),
+        Token::OpenAngleBracketEqual => Ok((BinaryOperator::LessOrEqual, &lexer_tokens[1..])),
+        Token::CloseAngleBracket => Ok((BinaryOperator::GreaterThan, &lexer_tokens[1..])),
+        Token::CloseAngleBracketEqual => Ok((BinaryOperator::GreaterOrEqual, &lexer_tokens[1..])),
         _ => Err(fail()),
     }
 }
 
-// <unop> ::= "-" | "~"
+// <unop> ::= "-" | "~" | "!"
 fn parse_unary_operator(lexer_tokens: &[Token]) -> Result<(UnaryOperator, &[Token])> {
     match &lexer_tokens[0] {
         Token::Hyphen => Ok((UnaryOperator::Negate, &lexer_tokens[1..])),
         Token::Tilde => Ok((UnaryOperator::Complement, &lexer_tokens[1..])),
+        Token::Exclamation => Ok((UnaryOperator::Not, &lexer_tokens[1..])),
         _ => Err(fail()),
     }
 }

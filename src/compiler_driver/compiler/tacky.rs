@@ -41,6 +41,7 @@ pub enum Instruction {
 pub enum UnaryOperator {
     Complement,
     Negate,
+    Not,
 }
 
 pub enum BinaryOperator {
@@ -54,6 +55,14 @@ pub enum BinaryOperator {
     BitwiseAnd,
     BitwiseXOr,
     BitwiseOr,
+    And,
+    Or,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessOrEqual,
+    GreaterThan,
+    GreaterOrEqual,
 }
 
 #[derive(Clone)]
@@ -74,6 +83,14 @@ fn convert_binary_operator(binary_operator: parser::BinaryOperator) -> BinaryOpe
         parser::BinaryOperator::BitwiseAnd => BinaryOperator::BitwiseAnd,
         parser::BinaryOperator::BitwiseXOr => BinaryOperator::BitwiseXOr,
         parser::BinaryOperator::BitwiseOr => BinaryOperator::BitwiseOr,
+        parser::BinaryOperator::And => BinaryOperator::And,
+        parser::BinaryOperator::Or => BinaryOperator::Or,
+        parser::BinaryOperator::Equal => BinaryOperator::Equal,
+        parser::BinaryOperator::NotEqual => BinaryOperator::NotEqual,
+        parser::BinaryOperator::LessThan => BinaryOperator::LessThan,
+        parser::BinaryOperator::LessOrEqual => BinaryOperator::LessOrEqual,
+        parser::BinaryOperator::GreaterThan => BinaryOperator::GreaterThan,
+        parser::BinaryOperator::GreaterOrEqual => BinaryOperator::GreaterOrEqual,
     }
 }
 
@@ -81,6 +98,7 @@ fn convert_unary_operator(unary_operator: parser::UnaryOperator) -> UnaryOperato
     match unary_operator {
         parser::UnaryOperator::Complement => UnaryOperator::Complement,
         parser::UnaryOperator::Negate => UnaryOperator::Negate,
+        parser::UnaryOperator::Not => UnaryOperator::Not,
     }
 }
 

@@ -78,6 +78,7 @@ impl visualize::Visualizer for tacky::UnaryOperator {
         match self {
             tacky::UnaryOperator::Complement => String::from("Complement"),
             tacky::UnaryOperator::Negate => String::from("Negate"),
+            tacky::UnaryOperator::Not => String::from("Not"),
         }
     }
 }
@@ -95,6 +96,14 @@ impl visualize::Visualizer for tacky::BinaryOperator {
             tacky::BinaryOperator::BitwiseAnd => String::from("BitwiseAnd"),
             tacky::BinaryOperator::BitwiseXOr => String::from("BitwiseXOr"),
             tacky::BinaryOperator::BitwiseOr => String::from("BitwiseOr"),
+            tacky::BinaryOperator::And => String::from("And"),
+            tacky::BinaryOperator::Or => String::from("Or"),
+            tacky::BinaryOperator::Equal => String::from("Equal"),
+            tacky::BinaryOperator::NotEqual => String::from("NotEqual"),
+            tacky::BinaryOperator::LessThan => String::from("LessThan"),
+            tacky::BinaryOperator::LessOrEqual => String::from("LessOrEqual"),
+            tacky::BinaryOperator::GreaterThan => String::from("GreaterThan"),
+            tacky::BinaryOperator::GreaterOrEqual => String::from("GreaterOrEqual"),
         }
     }
 }

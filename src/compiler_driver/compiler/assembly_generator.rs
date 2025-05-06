@@ -84,6 +84,7 @@ fn convert_unary_operator(unary_operator: tacky::UnaryOperator) -> UnaryOperator
     match unary_operator {
         tacky::UnaryOperator::Complement => UnaryOperator::Not,
         tacky::UnaryOperator::Negate => UnaryOperator::Neg,
+        tacky::UnaryOperator::Not => todo!(),
     }
 }
 
@@ -164,6 +165,7 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
                     Instruction::Mov(Operand::Register(Register::DX), convert_val(destination)),
                 ]
             }
+            _ => todo!(),
         },
     }
 }

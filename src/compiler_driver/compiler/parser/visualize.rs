@@ -96,6 +96,14 @@ impl visualize::Visualizer for parser::BinaryOperator {
             parser::BinaryOperator::BitwiseAnd => String::from("BitwiseAnd"),
             parser::BinaryOperator::BitwiseXOr => String::from("BitwiseXOr"),
             parser::BinaryOperator::BitwiseOr => String::from("BitwiseOr"),
+            parser::BinaryOperator::And => String::from("And"),
+            parser::BinaryOperator::Or => String::from("Or"),
+            parser::BinaryOperator::Equal => String::from("Equal"),
+            parser::BinaryOperator::NotEqual => String::from("NotEqual"),
+            parser::BinaryOperator::LessThan => String::from("LessThan"),
+            parser::BinaryOperator::LessOrEqual => String::from("LessOrEqual"),
+            parser::BinaryOperator::GreaterThan => String::from("GreaterThan"),
+            parser::BinaryOperator::GreaterOrEqual => String::from("GreaterOrEqual"),
         }
     }
 }
@@ -105,6 +113,7 @@ impl visualize::Visualizer for parser::UnaryOperator {
         match self {
             parser::UnaryOperator::Complement => String::from("~"),
             parser::UnaryOperator::Negate => String::from("-"),
+            parser::UnaryOperator::Not => String::from("!"),
         }
     }
 }
