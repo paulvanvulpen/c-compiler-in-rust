@@ -1,13 +1,22 @@
 mod visualize;
 
 use super::parser;
+use crate::compiler_driver::compiler::tacky::Instruction::{JumpIfNotZero, JumpIfZero};
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program (function_definition)
 // function_definition = Function(identifier, instruction* body)
-// instruction = Return(val) | Unary(unary_operator, val src, val dst)
+// instruction = Return(val)
+//      | Unary(unary_operator, val src, val dst)
+//      | Binary(binary_operator, val src1, val src2, val dst)
+//      | Copy(val src, val dst)
+//      | Jump(identifier target)
+//      | JumpIfZero(val condition, identifier target)
+//      | JumpIfNotZero(val condition, identifier target)
+//      | Label(identifier)
 // val = Constant(int) | Var(identifier)
-// unary_operator = Complement | Negate
+// unary_operator = Complement | Negate | Not
+// binary_operator = Add | Subtract | Multiply | Divide | Remainder | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual
 pub enum TackyAbstractSyntaxTree {
     Program(Program),
 }
@@ -35,6 +44,24 @@ pub enum Instruction {
         source1: Val,
         source2: Val,
         destination: Val,
+    },
+    Copy {
+        source: Val,
+        destination: Val,
+    },
+    Jump {
+        target: String,
+    },
+    JumpIfZero {
+        condition: Val,
+        target: String,
+    },
+    JumpIfNotZero {
+        condition: Val,
+        target: String,
+    },
+    Label {
+        identifier: String,
     },
 }
 
@@ -102,10 +129,16 @@ fn convert_unary_operator(unary_operator: parser::UnaryOperator) -> UnaryOperato
     }
 }
 
-static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static TMP_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 fn make_temporary() -> String {
-    let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let id = TMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     format!("tmp.{id}")
+}
+
+static LABEL_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+fn make_label(label: &str) -> String {
+    let id = LABEL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    format!("{label}{id}")
 }
 
 fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<Instruction>, Val) {
@@ -130,23 +163,162 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
             binary_operator,
             left_operand,
             right_operand,
-        } => {
-            let binary_operator = convert_binary_operator(binary_operator);
-            let (mut instructions1, source1) = convert_boxed_expression(left_operand);
-            let (mut instructions2, source2) = convert_boxed_expression(right_operand);
-            instructions1.append(&mut instructions2);
-            let mut instructions = instructions1;
+        } => match binary_operator {
+            parser::BinaryOperator::Add
+            | parser::BinaryOperator::Subtract
+            | parser::BinaryOperator::Multiply
+            | parser::BinaryOperator::Divide
+            | parser::BinaryOperator::Remainder
+            | parser::BinaryOperator::LeftShift
+            | parser::BinaryOperator::RightShift
+            | parser::BinaryOperator::BitwiseAnd
+            | parser::BinaryOperator::BitwiseXOr
+            | parser::BinaryOperator::BitwiseOr
+            | parser::BinaryOperator::Equal
+            | parser::BinaryOperator::NotEqual
+            | parser::BinaryOperator::LessThan
+            | parser::BinaryOperator::LessOrEqual
+            | parser::BinaryOperator::GreaterThan
+            | parser::BinaryOperator::GreaterOrEqual => {
+                let binary_operator = convert_binary_operator(binary_operator);
+                let (mut instructions1, destination_left_operand) =
+                    convert_boxed_expression(left_operand);
+                let (mut instructions2, destination_right_operand) =
+                    convert_boxed_expression(right_operand);
+                instructions1.append(&mut instructions2);
+                let mut instructions = instructions1;
 
-            let destination = make_temporary();
-            let destination = Val::Var(destination);
-            instructions.push(Instruction::Binary {
-                binary_operator,
-                source1,
-                source2,
-                destination: destination.clone(),
-            });
-            (instructions, destination)
-        }
+                let final_destination = make_temporary();
+                let destination = Val::Var(final_destination);
+                instructions.push(Instruction::Binary {
+                    binary_operator,
+                    source1: destination_left_operand,
+                    source2: destination_right_operand,
+                    destination: destination.clone(),
+                });
+                (instructions, destination)
+            }
+            parser::BinaryOperator::And => {
+                // we conclude by an end result of 0 or 1. if either expression result is zero
+                // we jump to the false_label where we set the end result to zero
+                // when both results are non-zero then instead we set the result to one and jump
+                // straight to the end_label
+                let false_label = make_label("false");
+                let end_label = make_label("end");
+
+                let (left_instructions, destination_left_operand) =
+                    convert_boxed_expression(left_operand);
+                let left_expression_result = make_temporary();
+                let left_expression_result = Val::Var(left_expression_result);
+                let mut instructions = left_instructions;
+                instructions.push(Instruction::Copy {
+                    source: destination_left_operand,
+                    destination: left_expression_result.clone(),
+                });
+                instructions.push(JumpIfZero {
+                    condition: left_expression_result,
+                    target: false_label.clone(),
+                });
+
+                let (mut right_instructions, destination_right_operand) =
+                    convert_boxed_expression(right_operand);
+                let right_expression_result = make_temporary();
+                let right_expression_result = Val::Var(right_expression_result);
+                instructions.append(&mut right_instructions);
+                instructions.push(Instruction::Copy {
+                    source: destination_right_operand,
+                    destination: right_expression_result.clone(),
+                });
+                instructions.push(JumpIfZero {
+                    condition: right_expression_result,
+                    target: false_label.clone(),
+                });
+
+                let end_result = make_temporary();
+                let end_result = Val::Var(end_result);
+
+                instructions.push(Instruction::Copy {
+                    source: Val::Constant(1),
+                    destination: end_result.clone(),
+                });
+
+                instructions.push(Instruction::Jump {
+                    target: end_label.clone(),
+                });
+                instructions.push(Instruction::Label {
+                    identifier: false_label,
+                });
+                instructions.push(Instruction::Copy {
+                    source: Val::Constant(0),
+                    destination: end_result.clone(),
+                });
+                instructions.push(Instruction::Label {
+                    identifier: end_label,
+                });
+
+                (instructions, end_result)
+            }
+            parser::BinaryOperator::Or => {
+                // return with an end result of 0 or 1. If either expression is non-zero
+                // jump to a true_label where the end result is set to 1.
+                // if no jump occurs the statement where the end result it set to 0, followed
+                // by a jump to the end-label.
+                let true_label = make_label("true");
+                let end_label = make_label("end");
+                let (left_instructions, destination_left_operand) =
+                    convert_boxed_expression(left_operand);
+                let mut instructions = left_instructions;
+                let left_expression_result = make_temporary();
+                let left_expression_result = Val::Var(left_expression_result);
+                instructions.push(Instruction::Copy {
+                    source: destination_left_operand,
+                    destination: left_expression_result.clone(),
+                });
+                instructions.push(JumpIfNotZero {
+                    condition: left_expression_result,
+                    target: true_label.clone(),
+                });
+
+                let (mut right_instructions, destination_right_operand) =
+                    convert_boxed_expression(right_operand);
+                let right_expression_result = make_temporary();
+                let right_expression_result = Val::Var(right_expression_result);
+                instructions.append(&mut right_instructions);
+                instructions.push(Instruction::Copy {
+                    source: destination_right_operand,
+                    destination: right_expression_result.clone(),
+                });
+                instructions.push(JumpIfNotZero {
+                    condition: right_expression_result,
+                    target: true_label.clone(),
+                });
+
+                let end_result = make_temporary();
+                let end_result = Val::Var(end_result);
+
+                instructions.push(Instruction::Copy {
+                    source: Val::Constant(0),
+                    destination: end_result.clone(),
+                });
+
+                instructions.push(Instruction::Jump {
+                    target: end_label.clone(),
+                });
+
+                instructions.push(Instruction::Label {
+                    identifier: true_label,
+                });
+                instructions.push(Instruction::Copy {
+                    source: Val::Constant(1),
+                    destination: end_result.clone(),
+                });
+                instructions.push(Instruction::Label {
+                    identifier: end_label,
+                });
+
+                (instructions, end_result)
+            }
+        },
     }
 }
 

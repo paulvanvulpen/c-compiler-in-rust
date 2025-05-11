@@ -69,6 +69,30 @@ impl visualize::Visualizer for tacky::Instruction {
                 source2.visualize(depth + 1),
                 destination.visualize(depth + 1),
             ),
+            tacky::Instruction::Jump { target } => format!("Jump(label: {target})"),
+            tacky::Instruction::JumpIfZero { condition, target } => {
+                format!(
+                    "JumpIfZero({}, label: {})",
+                    condition.visualize(depth + 1),
+                    target
+                )
+            }
+            tacky::Instruction::JumpIfNotZero { condition, target } => {
+                format!(
+                    "JumpIfNotZero({}, label: {})",
+                    condition.visualize(depth + 1),
+                    target
+                )
+            }
+            tacky::Instruction::Label { identifier } => format!("Label {identifier}:"),
+            tacky::Instruction::Copy {
+                source,
+                destination,
+            } => format!(
+                "Copy: {}, {}",
+                source.visualize(depth + 1),
+                destination.visualize(depth + 1)
+            ),
         }
     }
 }

@@ -167,6 +167,7 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
             }
             _ => todo!(),
         },
+        _ => todo!(),
     }
 }
 
