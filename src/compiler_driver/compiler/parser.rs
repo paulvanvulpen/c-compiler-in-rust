@@ -69,8 +69,8 @@ pub enum BinaryOperator {
     NotEqual,
     LessThan,
     LessOrEqual,
-    GreaterThan,
     GreaterOrEqual,
+    GreaterThan,
 }
 
 impl BinaryOperator {

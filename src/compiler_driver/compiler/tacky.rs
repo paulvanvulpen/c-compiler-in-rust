@@ -88,8 +88,8 @@ pub enum BinaryOperator {
     NotEqual,
     LessThan,
     LessOrEqual,
-    GreaterThan,
     GreaterOrEqual,
+    GreaterThan,
 }
 
 #[derive(Clone)]
@@ -116,8 +116,8 @@ fn convert_binary_operator(binary_operator: parser::BinaryOperator) -> BinaryOpe
         parser::BinaryOperator::NotEqual => BinaryOperator::NotEqual,
         parser::BinaryOperator::LessThan => BinaryOperator::LessThan,
         parser::BinaryOperator::LessOrEqual => BinaryOperator::LessOrEqual,
-        parser::BinaryOperator::GreaterThan => BinaryOperator::GreaterThan,
         parser::BinaryOperator::GreaterOrEqual => BinaryOperator::GreaterOrEqual,
+        parser::BinaryOperator::GreaterThan => BinaryOperator::GreaterThan,
     }
 }
 

@@ -73,8 +73,25 @@ impl visualize::Visualizer for assembly_generator::Instruction {
                 op1.visualize(depth + 1),
                 op2.visualize(depth + 1),
             ),
+            assembly_generator::Instruction::Cmp(op1, op2) => format!(
+                "Cmp({}, {})",
+                op1.visualize(depth + 1),
+                op2.visualize(depth + 1)
+            ),
+            assembly_generator::Instruction::Jmp(identifier) => format!("Jmp({identifier})"),
+            assembly_generator::Instruction::JmpCC(condition_code, identifier) => format!(
+                "JmpCC({}, {})",
+                condition_code.visualize(depth + 1),
+                identifier
+            ),
+            assembly_generator::Instruction::SetCC(condition_code, op) => format!(
+                "SetCC({}, {})",
+                condition_code.visualize(depth + 1),
+                op.visualize(depth + 1)
+            ),
+            assembly_generator::Instruction::Label(identifier) => format!("{identifier}:"),
             assembly_generator::Instruction::Idiv(op) => {
-                format!("Idiv({})", op.visualize(depth + 1),)
+                format!("Idiv({})", op.visualize(depth + 1))
             }
             assembly_generator::Instruction::Cdq => String::from("Cdq"),
             assembly_generator::Instruction::AllocateStack(int) => {
@@ -93,6 +110,19 @@ impl visualize::Visualizer for assembly_generator::Register {
             assembly_generator::Register::DX => String::from("Reg(DX)"),
             assembly_generator::Register::R10 => String::from("Reg(R10)"),
             assembly_generator::Register::R11 => String::from("Reg(R11)"),
+        }
+    }
+}
+
+impl visualize::Visualizer for assembly_generator::ConditionCode {
+    fn visualize(&self, _depth: u8) -> String {
+        match self {
+            assembly_generator::ConditionCode::E => String::from("E"),
+            assembly_generator::ConditionCode::NE => String::from("NE"),
+            assembly_generator::ConditionCode::L => String::from("L"),
+            assembly_generator::ConditionCode::LE => String::from("LE"),
+            assembly_generator::ConditionCode::GE => String::from("GE"),
+            assembly_generator::ConditionCode::G => String::from("G"),
         }
     }
 }

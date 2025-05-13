@@ -111,6 +111,7 @@ fn write_instruction(instruction: assembly_generator::Instruction) -> String {
             {prefix}popq\t%rbp\n\
             {prefix}ret\n"
         ),
+        _ => todo!(),
     }
 }
 

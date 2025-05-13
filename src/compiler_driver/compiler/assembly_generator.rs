@@ -34,10 +34,24 @@ pub enum Instruction {
     Mov(Operand, Operand),
     Unary(UnaryOperator, Operand),
     Binary(BinaryOperator, Operand, Operand),
+    Cmp(Operand, Operand),
     Idiv(Operand),
     Cdq,
+    Jmp(String),
+    JmpCC(ConditionCode, String),
+    SetCC(ConditionCode, Operand),
+    Label(String),
     AllocateStack(usize),
     Ret,
+}
+
+pub enum ConditionCode {
+    E,
+    NE,
+    G,
+    GE,
+    L,
+    LE,
 }
 
 pub enum UnaryOperator {
@@ -84,7 +98,7 @@ fn convert_unary_operator(unary_operator: tacky::UnaryOperator) -> UnaryOperator
     match unary_operator {
         tacky::UnaryOperator::Complement => UnaryOperator::Not,
         tacky::UnaryOperator::Negate => UnaryOperator::Neg,
-        tacky::UnaryOperator::Not => todo!(),
+        tacky::UnaryOperator::Not => UnaryOperator::Not,
     }
 }
 
@@ -102,6 +116,18 @@ fn convert_binary_operator(binary_operator: tacky::BinaryOperator) -> BinaryOper
     }
 }
 
+fn find_associated_condition_code(binary_operator: tacky::BinaryOperator) -> ConditionCode {
+    match binary_operator {
+        tacky::BinaryOperator::Equal => ConditionCode::E,
+        tacky::BinaryOperator::NotEqual => ConditionCode::NE,
+        tacky::BinaryOperator::LessThan => ConditionCode::L,
+        tacky::BinaryOperator::LessOrEqual => ConditionCode::LE,
+        tacky::BinaryOperator::GreaterOrEqual => ConditionCode::GE,
+        tacky::BinaryOperator::GreaterThan => ConditionCode::G,
+        _ => panic!(),
+    }
+}
+
 fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
     match instruction {
         tacky::Instruction::Return(val) => {
@@ -114,15 +140,20 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
             unary_operator,
             source,
             destination,
-        } => {
-            vec![
+        } => match unary_operator {
+            tacky::UnaryOperator::Complement | tacky::UnaryOperator::Negate => vec![
                 Instruction::Mov(convert_val(source), convert_val(destination.clone())),
                 Instruction::Unary(
                     convert_unary_operator(unary_operator),
                     convert_val(destination),
                 ),
-            ]
-        }
+            ],
+            tacky::UnaryOperator::Not => vec![
+                Instruction::Cmp(Operand::Immediate(0), convert_val(source)),
+                Instruction::Mov(Operand::Immediate(0), convert_val(destination.clone())),
+                Instruction::SetCC(ConditionCode::E, convert_val(destination)),
+            ],
+        },
         tacky::Instruction::Binary {
             binary_operator,
             source1,
@@ -149,6 +180,21 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
                     ),
                 ]
             }
+            tacky::BinaryOperator::Equal
+            | tacky::BinaryOperator::NotEqual
+            | tacky::BinaryOperator::LessThan
+            | tacky::BinaryOperator::LessOrEqual
+            | tacky::BinaryOperator::GreaterOrEqual
+            | tacky::BinaryOperator::GreaterThan => {
+                vec![
+                    Instruction::Cmp(convert_val(source1), convert_val(source2)),
+                    Instruction::Mov(Operand::Immediate(0), convert_val(destination.clone())),
+                    Instruction::SetCC(
+                        find_associated_condition_code(binary_operator),
+                        convert_val(destination),
+                    ),
+                ]
+            }
             tacky::BinaryOperator::Divide => {
                 vec![
                     Instruction::Mov(convert_val(source1), Operand::Register(Register::AX)),
@@ -165,9 +211,37 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
                     Instruction::Mov(Operand::Register(Register::DX), convert_val(destination)),
                 ]
             }
-            _ => todo!(),
+            tacky::BinaryOperator::And | tacky::BinaryOperator::Or => {
+                panic!("These should have been handled during the tacky emitting phase")
+            }
         },
-        _ => todo!(),
+        tacky::Instruction::Copy {
+            source,
+            destination,
+        } => {
+            vec![Instruction::Mov(
+                convert_val(source),
+                convert_val(destination),
+            )]
+        }
+        tacky::Instruction::JumpIfZero { condition, target } => {
+            vec![
+                Instruction::Cmp(Operand::Immediate(0), convert_val(condition)),
+                Instruction::JmpCC(ConditionCode::E, target),
+            ]
+        }
+        tacky::Instruction::JumpIfNotZero { condition, target } => {
+            vec![
+                Instruction::Cmp(Operand::Immediate(0), convert_val(condition)),
+                Instruction::JmpCC(ConditionCode::NE, target),
+            ]
+        }
+        tacky::Instruction::Jump { target } => {
+            vec![Instruction::Jmp(target)]
+        }
+        tacky::Instruction::Label { identifier } => {
+            vec![Instruction::Label(identifier)]
+        }
     }
 }
 
@@ -249,17 +323,36 @@ pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -
             Instruction::Idiv(operand) => {
                 replace_pseudo_with_stack(operand);
             }
-            Instruction::Ret | Instruction::AllocateStack(_) | Instruction::Cdq => {}
+            Instruction::Cmp(op1, op2) => {
+                replace_pseudo_with_stack(op1);
+                replace_pseudo_with_stack(op2);
+            }
+            Instruction::SetCC(.., op1) => {
+                replace_pseudo_with_stack(op1);
+            }
+            Instruction::Ret
+            | Instruction::AllocateStack(_)
+            | Instruction::Cdq
+            | Instruction::Jmp(_)
+            | Instruction::JmpCC(_, _)
+            | Instruction::Label(_) => {}
         }
     }
     alloc_size
 }
 
 fn split_mem_to_mem_instruction(instruction: Instruction) -> Vec<Instruction> {
+    // use R10 to fix the first operand
+    // use R11 to fix the second operand
     match instruction {
+        // many instructions can not have both operands be memory addresses
         Instruction::Mov(op1 @ Operand::Stack { .. }, op2 @ Operand::Stack { .. }) => vec![
             Instruction::Mov(op1, Operand::Register(Register::R10)),
             Instruction::Mov(Operand::Register(Register::R10), op2),
+        ],
+        Instruction::Cmp(op1 @ Operand::Stack { .. }, op2 @ Operand::Stack { .. }) => vec![
+            Instruction::Mov(op1, Operand::Register(Register::R10)),
+            Instruction::Cmp(Operand::Register(Register::R10), op2),
         ],
         Instruction::Binary(
             binary_operator @ (BinaryOperator::Add
@@ -273,11 +366,19 @@ fn split_mem_to_mem_instruction(instruction: Instruction) -> Vec<Instruction> {
             Instruction::Mov(op1, Operand::Register(Register::R10)),
             Instruction::Binary(binary_operator, Operand::Register(Register::R10), op2),
         ],
+
+        // multiply can not have a memory address as its destination, regardless of its source operand
         Instruction::Binary(BinaryOperator::Mult, op1, op2 @ Operand::Stack { .. }) => vec![
             Instruction::Mov(op2.clone(), Operand::Register(Register::R11)),
             Instruction::Binary(BinaryOperator::Mult, op1, Operand::Register(Register::R11)),
             Instruction::Mov(Operand::Register(Register::R11), op2),
         ],
+        Instruction::Cmp(op1, op2 @ Operand::Immediate(_)) => vec![
+            Instruction::Mov(op2, Operand::Register(Register::R11)),
+            Instruction::Cmp(op1, Operand::Register(Register::R11)),
+        ],
+        // On x86 the shift instructions can only take their count
+        // from an 8-bit immediate or from the CL register (the low byte of CX)
         Instruction::Binary(
             binary_operator @ (BinaryOperator::LShift | BinaryOperator::RShift),
             op1,
