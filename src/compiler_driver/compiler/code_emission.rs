@@ -79,6 +79,8 @@ fn write_instruction(instruction: assembly_generator::Instruction) -> String {
             )
         }
         assembly_generator::Instruction::Binary(binary_operator, source, destination) => {
+            // shifts have either been fixed to use the cl register, or an immediate.
+            // in its second form it can be parsed like any other binary operator at this point.
             if matches!(
                 (&binary_operator, &source),
                 (

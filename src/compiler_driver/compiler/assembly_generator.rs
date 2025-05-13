@@ -387,7 +387,7 @@ fn split_mem_to_mem_instruction(instruction: Instruction) -> Vec<Instruction> {
             Instruction::Mov(op1, Operand::Register(Register::CX)),
             Instruction::Binary(binary_operator, Operand::Register(Register::CX), op2),
         ],
-
+        // cannot divide by an immediate
         Instruction::Idiv(op1 @ Operand::Immediate { .. }) => vec![
             Instruction::Mov(op1, Operand::Register(Register::R10)),
             Instruction::Idiv(Operand::Register(Register::R10)),
