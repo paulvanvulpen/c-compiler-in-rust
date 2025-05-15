@@ -69,13 +69,17 @@ fn write_instruction(instruction: assembly_generator::Instruction) -> String {
     let prefix = "    ";
     match instruction {
         assembly_generator::Instruction::Mov(src, dst) => {
-            format!("movl\t{}, {}\n", write_operand(src), write_operand(dst))
+            format!(
+                "movl\t{}, {}\n",
+                write_operand(src, 4),
+                write_operand(dst, 4)
+            )
         }
         assembly_generator::Instruction::Unary(unary_operator, operand) => {
             format!(
                 "{}	{}\n",
                 write_unary_operator(unary_operator),
-                write_operand(operand)
+                write_operand(operand, 4)
             )
         }
         assembly_generator::Instruction::Binary(binary_operator, source, destination) => {
@@ -90,21 +94,22 @@ fn write_instruction(instruction: assembly_generator::Instruction) -> String {
                 )
             ) {
                 format!(
-                    "{}\t%cl, {}\n",
+                    "{}\t{}, {}\n",
                     write_binary_operator(binary_operator),
-                    write_operand(destination)
+                    write_operand(source, 1),
+                    write_operand(destination, 4)
                 )
             } else {
                 format!(
                     "{}\t{}, {}\n",
                     write_binary_operator(binary_operator),
-                    write_operand(source),
-                    write_operand(destination)
+                    write_operand(source, 4),
+                    write_operand(destination, 4)
                 )
             }
         }
         assembly_generator::Instruction::Idiv(operand) => {
-            format!("idivl\t{}\n", write_operand(operand))
+            format!("idivl\t{}\n", write_operand(operand, 4))
         }
         assembly_generator::Instruction::Cdq => String::from("cdq\n"),
         assembly_generator::Instruction::AllocateStack(size) => format!("subq\t${size}, %rsp\n"),
@@ -113,13 +118,35 @@ fn write_instruction(instruction: assembly_generator::Instruction) -> String {
             {prefix}popq\t%rbp\n\
             {prefix}ret\n"
         ),
-        _ => todo!(),
+        assembly_generator::Instruction::Cmp(op1, op2) => {
+            format!(
+                "cmpl\t{}, {}\n",
+                write_operand(op1, 4),
+                write_operand(op2, 4)
+            )
+        }
+        assembly_generator::Instruction::Jmp(label) => {
+            format!("jmp\t.L{label}\n")
+        }
+        assembly_generator::Instruction::JmpCC(condition_code, label) => {
+            format!("j{}\t.L{label}\n", write_condition_code(condition_code))
+        }
+        assembly_generator::Instruction::SetCC(condition_code, operand) => {
+            format!(
+                "set{}\t{}\n",
+                write_condition_code(condition_code),
+                write_operand(operand, 1)
+            )
+        }
+        assembly_generator::Instruction::Label(label) => {
+            format!(".L{label}:\n")
+        }
     }
 }
 
-fn write_operand(operand: assembly_generator::Operand) -> String {
+fn write_operand(operand: assembly_generator::Operand, byte_count: u8) -> String {
     match operand {
-        assembly_generator::Operand::Register(register) => write_register(register),
+        assembly_generator::Operand::Register(register) => write_register(register, byte_count),
         assembly_generator::Operand::Immediate(int) => format!("${int}"),
         assembly_generator::Operand::Pseudo { .. } => {
             panic!("should have been cleaned up in the assembly_generator")
@@ -128,13 +155,44 @@ fn write_operand(operand: assembly_generator::Operand) -> String {
     }
 }
 
-fn write_register(register: assembly_generator::Register) -> String {
+fn write_register(register: assembly_generator::Register, byte_count: u8) -> String {
     match register {
-        assembly_generator::Register::AX => String::from("%eax"),
-        assembly_generator::Register::CX => String::from("%ecx"),
-        assembly_generator::Register::DX => String::from("%edx"),
-        assembly_generator::Register::R10 => String::from("%r10d"),
-        assembly_generator::Register::R11 => String::from("%r11d"),
+        assembly_generator::Register::AX => match byte_count {
+            1 => String::from("%al"),
+            4 => String::from("%eax"),
+            _ => panic!("unknown register"),
+        },
+        assembly_generator::Register::CX => match byte_count {
+            1 => String::from("%cl"),
+            4 => String::from("%ecx"),
+            _ => panic!("unknown register"),
+        },
+        assembly_generator::Register::DX => match byte_count {
+            1 => String::from("%dl"),
+            4 => String::from("%edx"),
+            _ => panic!("unknown register"),
+        },
+        assembly_generator::Register::R10 => match byte_count {
+            1 => String::from("%r10b"),
+            4 => String::from("%r10d"),
+            _ => panic!("unknown register"),
+        },
+        assembly_generator::Register::R11 => match byte_count {
+            1 => String::from("%r11b"),
+            4 => String::from("%r11d"),
+            _ => panic!("unknown register"),
+        },
+    }
+}
+
+fn write_condition_code(condition_code: assembly_generator::ConditionCode) -> String {
+    match condition_code {
+        assembly_generator::ConditionCode::E => String::from("e"),
+        assembly_generator::ConditionCode::NE => String::from("ne"),
+        assembly_generator::ConditionCode::L => String::from("l"),
+        assembly_generator::ConditionCode::LE => String::from("le"),
+        assembly_generator::ConditionCode::GE => String::from("ge"),
+        assembly_generator::ConditionCode::G => String::from("g"),
     }
 }
 

@@ -187,7 +187,7 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
             | tacky::BinaryOperator::GreaterOrEqual
             | tacky::BinaryOperator::GreaterThan => {
                 vec![
-                    Instruction::Cmp(convert_val(source1), convert_val(source2)),
+                    Instruction::Cmp(convert_val(source2), convert_val(source1)),
                     Instruction::Mov(Operand::Immediate(0), convert_val(destination.clone())),
                     Instruction::SetCC(
                         find_associated_condition_code(binary_operator),
@@ -341,7 +341,7 @@ pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -
     alloc_size
 }
 
-fn split_mem_to_mem_instruction(instruction: Instruction) -> Vec<Instruction> {
+fn fix_invalid_instruction(instruction: Instruction) -> Vec<Instruction> {
     // use R10 to fix the first operand
     // use R11 to fix the second operand
     match instruction {
@@ -351,7 +351,7 @@ fn split_mem_to_mem_instruction(instruction: Instruction) -> Vec<Instruction> {
             Instruction::Mov(Operand::Register(Register::R10), op2),
         ],
         Instruction::Cmp(op1 @ Operand::Stack { .. }, op2 @ Operand::Stack { .. }) => vec![
-            Instruction::Mov(op1, Operand::Register(Register::R10)),
+            Instruction::Mov(op1.clone(), Operand::Register(Register::R10)),
             Instruction::Cmp(Operand::Register(Register::R10), op2),
         ],
         Instruction::Binary(
@@ -373,6 +373,7 @@ fn split_mem_to_mem_instruction(instruction: Instruction) -> Vec<Instruction> {
             Instruction::Binary(BinaryOperator::Mult, op1, Operand::Register(Register::R11)),
             Instruction::Mov(Operand::Register(Register::R11), op2),
         ],
+        // compare instructions cannot have an immediate as the second operand
         Instruction::Cmp(op1, op2 @ Operand::Immediate(_)) => vec![
             Instruction::Mov(op2, Operand::Register(Register::R11)),
             Instruction::Cmp(op1, Operand::Register(Register::R11)),
@@ -399,7 +400,7 @@ fn split_mem_to_mem_instruction(instruction: Instruction) -> Vec<Instruction> {
 fn fix_up_instructions(instructions: Vec<Instruction>) -> Vec<Instruction> {
     instructions
         .into_iter()
-        .flat_map(split_mem_to_mem_instruction)
+        .flat_map(fix_invalid_instruction)
         .collect()
 }
 
