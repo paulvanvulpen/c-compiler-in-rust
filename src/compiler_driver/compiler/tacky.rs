@@ -1,7 +1,6 @@
 mod visualize;
 
 use super::parser;
-use crate::compiler_driver::compiler::tacky::Instruction::{JumpIfNotZero, JumpIfZero};
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program (function_definition)
@@ -216,7 +215,7 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
                     source: destination_left_operand,
                     destination: left_expression_result.clone(),
                 });
-                instructions.push(JumpIfZero {
+                instructions.push(Instruction::JumpIfZero {
                     condition: left_expression_result,
                     target: false_label.clone(),
                 });
@@ -230,7 +229,7 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
                     source: destination_right_operand,
                     destination: right_expression_result.clone(),
                 });
-                instructions.push(JumpIfZero {
+                instructions.push(Instruction::JumpIfZero {
                     condition: right_expression_result,
                     target: false_label.clone(),
                 });
@@ -275,7 +274,7 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
                     source: destination_left_operand,
                     destination: left_expression_result.clone(),
                 });
-                instructions.push(JumpIfNotZero {
+                instructions.push(Instruction::JumpIfNotZero {
                     condition: left_expression_result,
                     target: true_label.clone(),
                 });
@@ -289,7 +288,7 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
                     source: destination_right_operand,
                     destination: right_expression_result.clone(),
                 });
-                instructions.push(JumpIfNotZero {
+                instructions.push(Instruction::JumpIfNotZero {
                     condition: right_expression_result,
                     target: true_label.clone(),
                 });
