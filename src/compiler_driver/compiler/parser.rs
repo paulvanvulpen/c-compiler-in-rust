@@ -6,12 +6,14 @@ mod visualize;
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program(function_definition)
-// function_definition = Function(identifier name, statement body)
-// statement = Return(exp)
-// exp = Constant(int) | Unary(unary_operator, exp) | Binary(binary_operator, exp, exp)
+// function_definition = Function(identifier name, block_item* body)
+// statement = Return(exp) | Expression(exp) | Null
+// declaration = Declaration(identifier name, exp? init)
+// block_item = S(statement) | D(declaration)
+// exp = Constant(int) | Var(identifier) | Unary(unary_operator, exp) | Binary(binary_operator, exp, exp) | Assignment(exp, exp)
 // unary_operator = Complement | Negate | Not
 // binary_operator = Add | Subtract | Multiply | Divide | Remainder | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual
-//
+
 pub enum AbstractSyntaxTree {
     Program(Program),
 }
@@ -25,23 +27,46 @@ pub enum Program {
 
 // <function>
 pub enum FunctionDefinition {
-    Function { identifier: String, body: Statement },
+    Function {
+        identifier: String,
+        body: Vec<BlockItem>,
+    },
+}
+
+// <block-item>
+pub enum BlockItem {
+    Statement(Statement),
+    Declaration(Declaration),
+}
+
+// <declaration>
+pub enum Declaration {
+    Declaration {
+        identifier: String,
+        init: Option<Expression>,
+    },
 }
 
 // <statement>
 pub enum Statement {
     Return(Expression),
+    Expression(Expression),
+    Null,
 }
 
 // <exp>
 pub enum Expression {
     Constant(usize),
+    Var {
+        identifier: String,
+    },
     Unary(UnaryOperator, Box<Expression>),
     BinaryOperation {
         binary_operator: BinaryOperator,
         left_operand: Box<Expression>,
         right_operand: Box<Expression>,
     },
+    Assignment(Box<Expression>, Box<Expression>),
 }
 
 // <unop>
@@ -71,6 +96,7 @@ pub enum BinaryOperator {
     LessOrEqual,
     GreaterOrEqual,
     GreaterThan,
+    Assign,
 }
 
 impl BinaryOperator {
@@ -94,6 +120,7 @@ impl BinaryOperator {
             BinaryOperator::BitwiseOr => 33,
             BinaryOperator::And => 10,
             BinaryOperator::Or => 5,
+            BinaryOperator::Assign => 1,
         }
     }
 }
@@ -106,17 +133,22 @@ fn parse_program(lexer_tokens: &[Token]) -> Result<Program> {
     }
 }
 
-// <function> ::= "int" <identifier> "(" "void" ")" "{" <statement> "}"
+// <function> ::= "int" <identifier> "(" "void" ")" "{" { <block-item> } "}"
 fn parse_function(lexer_tokens: &[Token]) -> Result<FunctionDefinition> {
     let lexer_tokens = expect(Token::Int, lexer_tokens)?;
     let (identifier, lexer_tokens) = parse_identifier(lexer_tokens)?;
     let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)?;
     let lexer_tokens = expect(Token::Void, lexer_tokens)?;
     let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)?;
-    let lexer_tokens = expect(Token::OpenBrace, lexer_tokens)?;
-    let (body, lexer_tokens) = parse_statement(lexer_tokens)?;
-    let lexer_tokens = expect(Token::CloseBrace, lexer_tokens)?;
+    let mut lexer_tokens = expect(Token::OpenBrace, lexer_tokens)?;
 
+    let mut body = vec![];
+    while !matches!(&lexer_tokens[0], Token::CloseBrace) {
+        let (block_item, updated_lexer_tokens) = parse_block_item(lexer_tokens)?;
+        lexer_tokens = updated_lexer_tokens;
+        body.push(block_item);
+    }
+    let lexer_tokens = &lexer_tokens[1..];
     match lexer_tokens {
         t if t.is_empty() => Ok(FunctionDefinition::Function { identifier, body }),
         _ => Err(fail()),
@@ -131,12 +163,62 @@ fn parse_identifier(lexer_tokens: &[Token]) -> Result<(String, &[Token])> {
     }
 }
 
-// <statement> ::= "return" <exp> ";"
+// <block-item> ::= <statement> | <declaration>
+fn parse_block_item(lexer_tokens: &[Token]) -> Result<(BlockItem, &[Token])> {
+    match &lexer_tokens[0] {
+        Token::Int => {
+            let (declaration, lexer_tokens) = parse_declaration(&lexer_tokens)?;
+            Ok((BlockItem::Declaration(declaration), &lexer_tokens))
+        }
+        _ => {
+            let (statement, lexer_tokens) = parse_statement(&lexer_tokens)?;
+            Ok((BlockItem::Statement(statement), &lexer_tokens))
+        }
+    }
+}
+
+fn parse_declaration(lexer_tokens: &[Token]) -> Result<(Declaration, &[Token])> {
+    let lexer_tokens = expect(Token::Int, lexer_tokens)?;
+    let (identifier, lexer_tokens) = parse_identifier(lexer_tokens)?;
+    if !matches!(lexer_tokens[0], Token::Semicolon) {
+        let lexer_tokens = expect(Token::Equal, lexer_tokens)?;
+        let (expression, lexer_tokens) = parse_expression(lexer_tokens, 0)?;
+        let lexer_tokens = expect(Token::Semicolon, lexer_tokens)?;
+        Ok((
+            Declaration::Declaration {
+                identifier,
+                init: Some(expression),
+            },
+            lexer_tokens,
+        ))
+    } else {
+        let lexer_tokens = expect(Token::Semicolon, lexer_tokens)?;
+        Ok((
+            Declaration::Declaration {
+                identifier,
+                init: None,
+            },
+            lexer_tokens,
+        ))
+    }
+}
+
+// <statement> ::= "return" <exp> ";" | <exp> ";" | ";"
 fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
-    let lexer_tokens = expect(Token::Return, lexer_tokens)?;
-    let (expression, lexer_tokens) = parse_expression(lexer_tokens, 0)?;
-    let lexer_tokens = expect(Token::Semicolon, lexer_tokens)?;
-    Ok((Statement::Return(expression), lexer_tokens))
+    match lexer_tokens[0] {
+        Token::Return => {
+            let lexer_tokens = &lexer_tokens[1..];
+            let (expression, lexer_tokens) = parse_expression(lexer_tokens, 0)?;
+            let lexer_tokens = expect(Token::Semicolon, lexer_tokens)?;
+            Ok((Statement::Return(expression), lexer_tokens))
+        }
+        Token::Semicolon => Ok((Statement::Null, &lexer_tokens[1..])),
+        _ => {
+            let (expression, lexer_tokens) = parse_expression(lexer_tokens, 0)?;
+            let lexer_tokens = expect(Token::Semicolon, lexer_tokens)?;
+            Ok((Statement::Expression(expression), &lexer_tokens))
+        }
+    }
 }
 
 fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
@@ -159,8 +241,20 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         Token::OpenAngleBracketEqual => Some(BinaryOperator::LessOrEqual.precedence()),
         Token::CloseAngleBracket => Some(BinaryOperator::GreaterThan.precedence()),
         Token::CloseAngleBracketEqual => Some(BinaryOperator::GreaterOrEqual.precedence()),
-
-        _ => None,
+        Token::Equal => Some(BinaryOperator::Assign.precedence()),
+        Token::Identifier(_)
+        | Token::Constant(_)
+        | Token::Int
+        | Token::Void
+        | Token::Return
+        | Token::OpenParenthesis
+        | Token::CloseParenthesis
+        | Token::OpenBrace
+        | Token::CloseBrace
+        | Token::Semicolon
+        | Token::Tilde
+        | Token::DoubleHyphen
+        | Token::Exclamation => None,
     }
 }
 
@@ -174,6 +268,12 @@ fn parse_factor(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
             Ok((Expression::Unary(unary_op, Box::new(factor)), lexer_tokens))
         }
         Token::Constant(constant) => Ok((Expression::Constant(*constant), &lexer_tokens[1..])),
+        Token::Identifier(identifier) => Ok((
+            Expression::Var {
+                identifier: identifier.clone(),
+            },
+            &lexer_tokens[1..],
+        )),
         Token::OpenParenthesis => {
             let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)?;
             let (expression, lexer_tokens) = parse_expression(lexer_tokens, 0)?;
@@ -190,15 +290,25 @@ fn parse_expression(lexer_tokens: &[Token], min_precedence: u8) -> Result<(Expre
     let mut right;
     let mut binary_operator;
     while get_binary_operator_precedence(&lexer_tokens[0]) >= Some(min_precedence) {
-        (binary_operator, lexer_tokens) = parse_binary_operator(&lexer_tokens)?;
-        (right, lexer_tokens) = parse_expression(lexer_tokens, binary_operator.precedence() + 1)?;
-        left = Expression::BinaryOperation {
-            binary_operator,
-            left_operand: Box::new(left),
-            right_operand: Box::new(right),
-        };
+        match &lexer_tokens[0] {
+            Token::Equal => {
+                lexer_tokens = &lexer_tokens[1..];
+                (right, lexer_tokens) =
+                    parse_expression(lexer_tokens, BinaryOperator::Assign.precedence())?;
+                left = Expression::Assignment(Box::new(left), Box::new(right));
+            }
+            _ => {
+                (binary_operator, lexer_tokens) = parse_binary_operator(&lexer_tokens)?;
+                (right, lexer_tokens) =
+                    parse_expression(lexer_tokens, binary_operator.precedence() + 1)?;
+                left = Expression::BinaryOperation {
+                    binary_operator,
+                    left_operand: Box::new(left),
+                    right_operand: Box::new(right),
+                };
+            }
+        }
     }
-
     Ok((left, lexer_tokens))
 }
 

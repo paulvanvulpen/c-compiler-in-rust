@@ -118,6 +118,7 @@ fn convert_binary_operator(binary_operator: parser::BinaryOperator) -> BinaryOpe
         parser::BinaryOperator::LessOrEqual => BinaryOperator::LessOrEqual,
         parser::BinaryOperator::GreaterOrEqual => BinaryOperator::GreaterOrEqual,
         parser::BinaryOperator::GreaterThan => BinaryOperator::GreaterThan,
+        _ => todo!(),
     }
 }
 
@@ -318,7 +319,9 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
 
                 (instructions, end_result)
             }
+            _ => todo!(),
         },
+        _ => todo!(),
     }
 }
 
@@ -330,6 +333,7 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
             instructions.push(Instruction::Return(final_destination));
             instructions
         }
+        _ => todo!(),
     }
 }
 
@@ -337,10 +341,11 @@ fn convert_function_definition(
     function_definition: parser::FunctionDefinition,
 ) -> FunctionDefinition {
     match function_definition {
-        parser::FunctionDefinition::Function { identifier, body } => FunctionDefinition::Function {
-            identifier,
-            instructions: convert_statement(body),
-        },
+        // parser::FunctionDefinition::Function { identifier, body } => FunctionDefinition::Function {
+        //     identifier,
+        //     instructions: convert_statement(body),
+        // },
+        _ => todo!(),
     }
 }
 

@@ -24,27 +24,55 @@ impl visualize::Visualizer for parser::FunctionDefinition {
         let parser::FunctionDefinition::Function { identifier, body } = self;
         let indent = "    ";
         let prefix = indent.repeat(depth as usize);
+        let body_str = body
+            .iter()
+            .map(|block_item| block_item.visualize(depth + 1))
+            .collect::<Vec<String>>()
+            .join(format!("\n{prefix}{indent}").as_str());
+
         format!(
             "{prefix}Function(name={identifier}, body=\n\
-            {}\n\
+            {prefix}{indent}{}\n\
             {prefix})",
-            body.visualize(depth + 1)
+            body_str
         )
     }
 }
 
 impl visualize::Visualizer for parser::Statement {
     fn visualize(&self, depth: u8) -> String {
-        let parser::Statement::Return(expression) = self;
-        {
-            let indent = "    ";
-            let prefix = indent.repeat(depth as usize);
-            format!(
-                "{prefix}Return(\n\
-                {}\n\
-                {prefix})",
-                expression.visualize(depth + 1)
-            )
+        let indent = "    ";
+        let prefix = indent.repeat(depth as usize);
+        match self {
+            parser::Statement::Return(expression) => {
+                format!(
+                    "Return(\n\
+                    {prefix}{indent}{}\n\
+                    {prefix})",
+                    expression.visualize(depth + 1)
+                )
+            }
+            parser::Statement::Expression(expression) => expression.visualize(depth + 1),
+            parser::Statement::Null => String::from(";"),
+        }
+    }
+}
+
+impl visualize::Visualizer for parser::BlockItem {
+    fn visualize(&self, depth: u8) -> String {
+        match self {
+            parser::BlockItem::Declaration(declaration) => declaration.visualize(depth),
+            parser::BlockItem::Statement(statement) => statement.visualize(depth),
+        }
+    }
+}
+
+impl visualize::Visualizer for parser::Declaration {
+    fn visualize(&self, _depth: u8) -> String {
+        let parser::Declaration::Declaration { identifier, init } = self;
+        match init {
+            Some(expression) => format!("int {identifier} = {};", expression.visualize(0)),
+            None => format!("int {identifier};"),
         }
     }
 }
@@ -54,7 +82,10 @@ impl visualize::Visualizer for parser::Expression {
         let prefix = "    ".repeat(depth as usize);
         match self {
             parser::Expression::Constant(value) => {
-                format!("{prefix}Constant({value})")
+                format!("Constant({value})")
+            }
+            parser::Expression::Var { identifier } => {
+                format!("Var({identifier})")
             }
             parser::Expression::Unary(unary_operator, boxed_expression) => {
                 format!(
@@ -68,15 +99,23 @@ impl visualize::Visualizer for parser::Expression {
                 left_operand,
                 right_operand,
             } => {
-                let prefix = "    ".repeat(depth as usize);
+                let indent = "    ";
+                let prefix = indent.repeat(depth as usize);
                 format!(
                     "{prefix}BinaryOperation({}:\n\
-                    {},\n\
-                    {}\n\
-                    {prefix})",
+                    {indent}{},\n\
+                    {indent}{}\n\
+                    {prefix}{indent})",
                     binary_operator.visualize(depth + 1),
                     left_operand.visualize(depth + 1),
                     right_operand.visualize(depth + 1),
+                )
+            }
+            parser::Expression::Assignment(boxed_expression1, boxed_expression2) => {
+                format!(
+                    "{} = {}",
+                    boxed_expression1.visualize(depth + 1),
+                    boxed_expression2.visualize(depth + 1),
                 )
             }
         }
@@ -104,6 +143,7 @@ impl visualize::Visualizer for parser::BinaryOperator {
             parser::BinaryOperator::LessOrEqual => String::from("LessOrEqual"),
             parser::BinaryOperator::GreaterThan => String::from("GreaterThan"),
             parser::BinaryOperator::GreaterOrEqual => String::from("GreaterOrEqual"),
+            parser::BinaryOperator::Assign => String::from("Assign"),
         }
     }
 }
