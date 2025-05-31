@@ -6,8 +6,10 @@ use visualize::Visualizer;
 
 mod assembly_generator;
 mod code_emission;
+mod generator;
 mod lexer;
 mod parser;
+mod semantic_analysis;
 mod tacky;
 mod visualize;
 
@@ -22,6 +24,12 @@ pub fn run_compiler(args: &Args, input_file_path: &Path) -> Result<()> {
     info!("\nAST:\n{}", ast.visualize(0).as_str());
 
     if args.parse {
+        return Ok(());
+    }
+
+    let ast = semantic_analysis::run_semantic_analysis(ast)?;
+
+    if args.validate {
         return Ok(());
     }
 

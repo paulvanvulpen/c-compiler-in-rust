@@ -27,7 +27,7 @@ fn emit_binary(args: &Args, input_file_path: &Path) -> Result<()> {
     run_preprocessor(&input_file_path).context("preprocessing step")?;
     compiler::run_compiler(&args, &input_file_path.with_extension("i"))
         .context("compilation step")?;
-    if args.lex || args.parse || args.codegen || args.tacky || args.codegen {
+    if args.lex || args.parse || args.validate || args.codegen || args.tacky || args.codegen {
         return Ok(());
     }
     run_assemble_and_link(&input_file_path).context("assembling & linking")?;

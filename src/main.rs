@@ -23,7 +23,11 @@ struct Args {
     #[arg(long)]
     parse: bool,
 
-    /// Run the lexer, parser and TACKY, but stop before assembly generation
+    /// Run the lexer and parser, but stop before TACKY
+    #[arg(long)]
+    validate: bool,
+
+    /// Run the lexer, parser, validator and TACKY, but stop before assembly generation
     #[arg(long)]
     tacky: bool,
 

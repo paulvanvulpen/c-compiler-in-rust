@@ -39,6 +39,12 @@ pub enum BlockItem {
     Declaration(Declaration),
 }
 
+impl Default for BlockItem {
+    fn default() -> Self {
+        BlockItem::Statement(Default::default())
+    }
+}
+
 // <declaration>
 pub enum Declaration {
     Declaration {
@@ -48,9 +54,11 @@ pub enum Declaration {
 }
 
 // <statement>
+#[derive(Default)]
 pub enum Statement {
     Return(Expression),
     Expression(Expression),
+    #[default]
     Null,
 }
 

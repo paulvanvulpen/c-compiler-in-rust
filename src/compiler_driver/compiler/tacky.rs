@@ -1,5 +1,6 @@
 mod visualize;
 
+use super::generator;
 use super::parser;
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
@@ -129,14 +130,13 @@ fn convert_unary_operator(unary_operator: parser::UnaryOperator) -> UnaryOperato
     }
 }
 
-static TMP_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 fn make_temporary() -> String {
-    let id = TMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let id = generator::generate_unique_id();
     format!("tmp.{id}")
 }
 
-static LABEL_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 fn make_label(label: &str) -> String {
+    static LABEL_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let id = LABEL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     format!("{label}{id}")
 }
