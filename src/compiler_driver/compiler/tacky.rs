@@ -118,7 +118,9 @@ fn convert_binary_operator(binary_operator: parser::BinaryOperator) -> BinaryOpe
         parser::BinaryOperator::LessOrEqual => BinaryOperator::LessOrEqual,
         parser::BinaryOperator::GreaterOrEqual => BinaryOperator::GreaterOrEqual,
         parser::BinaryOperator::GreaterThan => BinaryOperator::GreaterThan,
-        _ => todo!(),
+        parser::BinaryOperator::Assign => panic!(
+            "parser should have converted the Assign operation into an Assignment Expressions"
+        ),
     }
 }
 
@@ -141,14 +143,18 @@ fn make_label(label: &str) -> String {
     format!("{label}{id}")
 }
 
-fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<Instruction>, Val) {
-    match *boxed_expression {
+fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val) {
+    match expression {
         parser::Expression::Constant(value) => {
             let instructions: Vec<Instruction> = vec![];
             (instructions, Val::Constant(value))
         }
+        parser::Expression::Var { identifier } => {
+            let instructions: Vec<Instruction> = vec![];
+            (instructions, Val::Var(identifier))
+        }
         parser::Expression::Unary(unary_operator, boxed_expression) => {
-            let (mut instructions, source) = convert_boxed_expression(boxed_expression);
+            let (mut instructions, source) = convert_expression(*boxed_expression);
             let destination = make_temporary();
             let destination = Val::Var(destination);
             let unary_operator = convert_unary_operator(unary_operator);
@@ -164,6 +170,9 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
             left_operand,
             right_operand,
         } => match binary_operator {
+            parser::BinaryOperator::Assign => panic!(
+                "parser should have converted the Assign operation into an Assignment Expressions"
+            ),
             parser::BinaryOperator::Add
             | parser::BinaryOperator::Subtract
             | parser::BinaryOperator::Multiply
@@ -182,9 +191,9 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
             | parser::BinaryOperator::GreaterOrEqual => {
                 let binary_operator = convert_binary_operator(binary_operator);
                 let (mut instructions1, destination_left_operand) =
-                    convert_boxed_expression(left_operand);
+                    convert_expression(*left_operand);
                 let (mut instructions2, destination_right_operand) =
-                    convert_boxed_expression(right_operand);
+                    convert_expression(*right_operand);
                 instructions1.append(&mut instructions2);
                 let mut instructions = instructions1;
 
@@ -207,7 +216,7 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
                 let end_label = make_label("end");
 
                 let (left_instructions, destination_left_operand) =
-                    convert_boxed_expression(left_operand);
+                    convert_expression(*left_operand);
                 let left_expression_result = make_temporary();
                 let left_expression_result = Val::Var(left_expression_result);
                 let mut instructions = left_instructions;
@@ -221,7 +230,7 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
                 });
 
                 let (mut right_instructions, destination_right_operand) =
-                    convert_boxed_expression(right_operand);
+                    convert_expression(*right_operand);
                 let right_expression_result = make_temporary();
                 let right_expression_result = Val::Var(right_expression_result);
                 instructions.append(&mut right_instructions);
@@ -266,7 +275,7 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
                 let true_label = make_label("true");
                 let end_label = make_label("end");
                 let (left_instructions, destination_left_operand) =
-                    convert_boxed_expression(left_operand);
+                    convert_expression(*left_operand);
                 let mut instructions = left_instructions;
                 let left_expression_result = make_temporary();
                 let left_expression_result = Val::Var(left_expression_result);
@@ -280,7 +289,7 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
                 });
 
                 let (mut right_instructions, destination_right_operand) =
-                    convert_boxed_expression(right_operand);
+                    convert_expression(*right_operand);
                 let right_expression_result = make_temporary();
                 let right_expression_result = Val::Var(right_expression_result);
                 instructions.append(&mut right_instructions);
@@ -318,21 +327,33 @@ fn convert_boxed_expression(boxed_expression: Box<parser::Expression>) -> (Vec<I
 
                 (instructions, end_result)
             }
-            _ => todo!(),
         },
-        _ => todo!(),
+        parser::Expression::Assignment(lhs_expression, rhs_expression) => {
+            let (.., lvalue) = convert_expression(*lhs_expression);
+            let (mut instructions, rvalue) = convert_expression(*rhs_expression);
+            instructions.push(Instruction::Copy {
+                source: rvalue,
+                destination: lvalue.clone(),
+            });
+            (instructions, lvalue)
+        }
     }
 }
 
 fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
     match statement {
         parser::Statement::Return(expression) => {
-            let (mut instructions, final_destination) =
-                convert_boxed_expression(Box::new(expression));
+            let (mut instructions, final_destination) = convert_expression(expression);
             instructions.push(Instruction::Return(final_destination));
             instructions
         }
-        _ => todo!(),
+        parser::Statement::Expression(expression) => {
+            let (instructions, ..) = convert_expression(expression);
+            instructions
+        }
+        parser::Statement::Null => {
+            vec![]
+        }
     }
 }
 
@@ -340,11 +361,43 @@ fn convert_function_definition(
     function_definition: parser::FunctionDefinition,
 ) -> FunctionDefinition {
     match function_definition {
-        // parser::FunctionDefinition::Function { identifier, body } => FunctionDefinition::Function {
-        //     identifier,
-        //     instructions: convert_statement(body),
-        // },
-        _ => todo!(),
+        parser::FunctionDefinition::Function {
+            identifier,
+            mut body,
+        } => {
+            let mut tacky_body: Vec<Instruction> = vec![];
+            for block_item in &mut body {
+                match block_item {
+                    parser::BlockItem::Declaration(declaration) => {
+                        let parser::Declaration::Declaration { identifier, init } = declaration;
+                        if let Some(unpacked_init) = init {
+                            let unpacked_init = std::mem::take(unpacked_init);
+                            let identifier = std::mem::take(identifier);
+                            let assignment_expression = parser::Expression::Assignment(
+                                Box::new(parser::Expression::Var { identifier }),
+                                Box::new(unpacked_init),
+                            );
+                            let (mut instructions, ..) = convert_expression(assignment_expression);
+                            tacky_body.append(&mut instructions);
+                        }
+                    }
+                    parser::BlockItem::Statement(statement) => {
+                        let original = std::mem::take(statement);
+                        let mut instructions = convert_statement(original);
+                        tacky_body.append(&mut instructions);
+                    }
+                }
+            }
+
+            // expected behavior for main when not explicitly specified
+            // and handles missing return statement. This line is bypassed when a return statement is already given
+            tacky_body.push(Instruction::Return(Val::Constant(0)));
+
+            FunctionDefinition::Function {
+                identifier,
+                instructions: tacky_body,
+            }
+        }
     }
 }
 

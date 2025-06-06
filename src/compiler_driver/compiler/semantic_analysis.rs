@@ -19,7 +19,7 @@ fn resolve_declaration(
         return Err(anyhow!("Duplicate variable declaration!"));
     }
     let unique_name = make_temporary_from_identifier(&identifier);
-    variable_map.insert(identifier.clone(), unique_name);
+    variable_map.insert(identifier.clone(), unique_name.clone());
 
     let mut updated_initialiser: Option<parser::Expression> = None;
     if let Some(init) = init {
@@ -27,7 +27,7 @@ fn resolve_declaration(
     }
 
     Ok(parser::Declaration::Declaration {
-        identifier,
+        identifier: unique_name,
         init: updated_initialiser,
     })
 }

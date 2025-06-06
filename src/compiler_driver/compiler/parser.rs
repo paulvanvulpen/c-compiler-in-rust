@@ -77,6 +77,12 @@ pub enum Expression {
     Assignment(Box<Expression>, Box<Expression>),
 }
 
+impl Default for Expression {
+    fn default() -> Self {
+        Expression::Constant(Default::default())
+    }
+}
+
 // <unop>
 pub enum UnaryOperator {
     Complement,
