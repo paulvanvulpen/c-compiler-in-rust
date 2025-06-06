@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use anyhow::{Context, anyhow};
-
 use super::generator;
 use super::parser;
+use super::visualize::Visualizer;
+use anyhow::{Context, anyhow};
 
 fn make_temporary_from_identifier(name: &str) -> String {
     let id = generator::generate_unique_id();
@@ -55,7 +55,7 @@ fn resolve_expression(
     match expression {
         parser::Expression::Assignment(left, right) => {
             if !matches!(*left, parser::Expression::Var { .. }) {
-                return Err(anyhow!("invalid lvalue!"));
+                return Err(anyhow!("invalid lvalue {:?}", (*left).visualize(0)));
             }
             Ok(parser::Expression::Assignment(
                 Box::new(resolve_expression(*left, variable_map)?),
@@ -68,7 +68,7 @@ fn resolve_expression(
                     identifier: variable_map[&identifier].clone(),
                 })
             } else {
-                Err(anyhow!("undeclared identifier"))
+                Err(anyhow!("undeclared identifier {:?}", identifier))
             }
         }
         parser::Expression::Constant(..) => Ok(expression),
@@ -76,11 +76,50 @@ fn resolve_expression(
             binary_operator,
             left_operand,
             right_operand,
-        } => Ok(parser::Expression::BinaryOperation {
-            binary_operator,
-            left_operand: Box::new(resolve_expression(*left_operand, variable_map)?),
-            right_operand: Box::new(resolve_expression(*right_operand, variable_map)?),
-        }),
+        } => {
+            match binary_operator {
+                parser::BinaryOperator::SumAssign
+                | parser::BinaryOperator::DifferenceAssign
+                | parser::BinaryOperator::ProductAssign
+                | parser::BinaryOperator::QuotientAssign
+                | parser::BinaryOperator::RemainderAssign
+                | parser::BinaryOperator::BitwiseAndAssign
+                | parser::BinaryOperator::BitwiseOrAssign
+                | parser::BinaryOperator::BitwiseXOrAssign
+                | parser::BinaryOperator::LeftShiftAssign
+                | parser::BinaryOperator::RightShiftAssign => {
+                    if !matches!(*left_operand, parser::Expression::Var { .. }) {
+                        return Err(anyhow!("invalid lvalue {:?}", (*left_operand).visualize(0)));
+                    }
+                }
+                parser::BinaryOperator::Add
+                | parser::BinaryOperator::Subtract
+                | parser::BinaryOperator::Multiply
+                | parser::BinaryOperator::Divide
+                | parser::BinaryOperator::Remainder
+                | parser::BinaryOperator::LeftShift
+                | parser::BinaryOperator::RightShift
+                | parser::BinaryOperator::BitwiseAnd
+                | parser::BinaryOperator::BitwiseXOr
+                | parser::BinaryOperator::BitwiseOr
+                | parser::BinaryOperator::And
+                | parser::BinaryOperator::Or
+                | parser::BinaryOperator::Equal
+                | parser::BinaryOperator::NotEqual
+                | parser::BinaryOperator::LessThan
+                | parser::BinaryOperator::LessOrEqual
+                | parser::BinaryOperator::GreaterOrEqual
+                | parser::BinaryOperator::GreaterThan => {}
+                parser::BinaryOperator::Assign => panic!(
+                    "parser should have converted the Assign operation into an Assignment Expressions"
+                ),
+            }
+            Ok(parser::Expression::BinaryOperation {
+                binary_operator,
+                left_operand: Box::new(resolve_expression(*left_operand, variable_map)?),
+                right_operand: Box::new(resolve_expression(*right_operand, variable_map)?),
+            })
+        }
         parser::Expression::Unary(unary_operator, expression) => Ok(parser::Expression::Unary(
             unary_operator,
             Box::new(resolve_expression(*expression, variable_map)?),

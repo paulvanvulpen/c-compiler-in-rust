@@ -100,16 +100,34 @@ pub enum Val {
 
 fn convert_binary_operator(binary_operator: parser::BinaryOperator) -> BinaryOperator {
     match binary_operator {
-        parser::BinaryOperator::Add => BinaryOperator::Add,
-        parser::BinaryOperator::Subtract => BinaryOperator::Subtract,
-        parser::BinaryOperator::Multiply => BinaryOperator::Multiply,
-        parser::BinaryOperator::Divide => BinaryOperator::Divide,
-        parser::BinaryOperator::Remainder => BinaryOperator::Remainder,
-        parser::BinaryOperator::LeftShift => BinaryOperator::LeftShift,
-        parser::BinaryOperator::RightShift => BinaryOperator::RightShift,
-        parser::BinaryOperator::BitwiseAnd => BinaryOperator::BitwiseAnd,
-        parser::BinaryOperator::BitwiseXOr => BinaryOperator::BitwiseXOr,
-        parser::BinaryOperator::BitwiseOr => BinaryOperator::BitwiseOr,
+        parser::BinaryOperator::Add | parser::BinaryOperator::SumAssign => BinaryOperator::Add,
+        parser::BinaryOperator::Subtract | parser::BinaryOperator::DifferenceAssign => {
+            BinaryOperator::Subtract
+        }
+        parser::BinaryOperator::Multiply | parser::BinaryOperator::ProductAssign => {
+            BinaryOperator::Multiply
+        }
+        parser::BinaryOperator::Divide | parser::BinaryOperator::QuotientAssign => {
+            BinaryOperator::Divide
+        }
+        parser::BinaryOperator::Remainder | parser::BinaryOperator::RemainderAssign => {
+            BinaryOperator::Remainder
+        }
+        parser::BinaryOperator::LeftShift | parser::BinaryOperator::LeftShiftAssign => {
+            BinaryOperator::LeftShift
+        }
+        parser::BinaryOperator::RightShift | parser::BinaryOperator::RightShiftAssign => {
+            BinaryOperator::RightShift
+        }
+        parser::BinaryOperator::BitwiseAnd | parser::BinaryOperator::BitwiseAndAssign => {
+            BinaryOperator::BitwiseAnd
+        }
+        parser::BinaryOperator::BitwiseXOr | parser::BinaryOperator::BitwiseXOrAssign => {
+            BinaryOperator::BitwiseXOr
+        }
+        parser::BinaryOperator::BitwiseOr | parser::BinaryOperator::BitwiseOrAssign => {
+            BinaryOperator::BitwiseOr
+        }
         parser::BinaryOperator::And => BinaryOperator::And,
         parser::BinaryOperator::Or => BinaryOperator::Or,
         parser::BinaryOperator::Equal => BinaryOperator::Equal,
@@ -204,6 +222,40 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                     source1: destination_left_operand,
                     source2: destination_right_operand,
                     destination: destination.clone(),
+                });
+                (instructions, destination)
+            }
+            parser::BinaryOperator::SumAssign
+            | parser::BinaryOperator::DifferenceAssign
+            | parser::BinaryOperator::ProductAssign
+            | parser::BinaryOperator::QuotientAssign
+            | parser::BinaryOperator::RemainderAssign
+            | parser::BinaryOperator::BitwiseAndAssign
+            | parser::BinaryOperator::BitwiseOrAssign
+            | parser::BinaryOperator::BitwiseXOrAssign
+            | parser::BinaryOperator::LeftShiftAssign
+            | parser::BinaryOperator::RightShiftAssign => {
+                // TODO: "Evaluate whether to use convert_expression here"
+                let binary_operator = convert_binary_operator(binary_operator);
+                let (mut instructions1, destination_left_operand) =
+                    convert_expression(*left_operand);
+                let (mut instructions2, destination_right_operand) =
+                    convert_expression(*right_operand);
+                instructions1.append(&mut instructions2);
+                let mut instructions = instructions1;
+
+                let final_destination = make_temporary();
+                let destination = Val::Var(final_destination);
+                instructions.push(Instruction::Binary {
+                    binary_operator,
+                    source1: destination_left_operand.clone(),
+                    source2: destination_right_operand,
+                    destination: destination.clone(),
+                });
+
+                instructions.push(Instruction::Copy {
+                    source: destination.clone(),
+                    destination: destination_left_operand,
                 });
                 (instructions, destination)
             }

@@ -144,6 +144,16 @@ impl visualize::Visualizer for parser::BinaryOperator {
             parser::BinaryOperator::GreaterThan => String::from("GreaterThan"),
             parser::BinaryOperator::GreaterOrEqual => String::from("GreaterOrEqual"),
             parser::BinaryOperator::Assign => String::from("Assign"),
+            parser::BinaryOperator::SumAssign => String::from("SumAssign"),
+            parser::BinaryOperator::DifferenceAssign => String::from("DifferenceAssign"),
+            parser::BinaryOperator::ProductAssign => String::from("ProductAssign"),
+            parser::BinaryOperator::QuotientAssign => String::from("QuotientAssign"),
+            parser::BinaryOperator::RemainderAssign => String::from("RemainderAssign"),
+            parser::BinaryOperator::BitwiseAndAssign => String::from("BitwiseAndAssign"),
+            parser::BinaryOperator::BitwiseOrAssign => String::from("BitwiseOrAssign"),
+            parser::BinaryOperator::BitwiseXOrAssign => String::from("BitwiseXOrAssign"),
+            parser::BinaryOperator::LeftShiftAssign => String::from("LeftShiftAssign"),
+            parser::BinaryOperator::RightShiftAssign => String::from("RightShiftAssign"),
         }
     }
 }

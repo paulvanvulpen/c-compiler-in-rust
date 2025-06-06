@@ -1,12 +1,16 @@
 int main(void)
 {
-//	return ~(-2);
-//    return (2 + 3);
-//    return 1 * 2 - 3 * (4 + 5);
-//    return 6/3/2;
-//    return 5 * 4 / 2 - 3 % (2 + 1);
-//    return 3<<6;
-//      return 80 >> 2 | 1 ^ 5 & 7 << 1;
-//    return 1foo;
-	return 1 >= 2;
+    int a = 250;
+    int b = 200;
+    int c = 100;
+    int d = 75;
+    int e = 50;
+    int f = 25;
+    int g = 10;
+    int h = 1;
+    int j = 0;
+    int x = 0;
+    x = a &= d = e;
+    return (a == 40 && b == 21800 && c == 109 && d == 41 && e == 41 &&
+            f == 27 && g == 2 && h == 2 && j == 1 && x == 40);
 }

@@ -111,30 +111,45 @@ pub enum BinaryOperator {
     GreaterOrEqual,
     GreaterThan,
     Assign,
+    SumAssign,
+    DifferenceAssign,
+    ProductAssign,
+    QuotientAssign,
+    RemainderAssign,
+    BitwiseAndAssign,
+    BitwiseOrAssign,
+    BitwiseXOrAssign,
+    LeftShiftAssign,
+    RightShiftAssign,
 }
 
 impl BinaryOperator {
     fn precedence(&self) -> u8 {
         match self {
-            BinaryOperator::Multiply => 50,
-            BinaryOperator::Divide => 50,
-            BinaryOperator::Remainder => 50,
-            BinaryOperator::Add => 45,
-            BinaryOperator::Subtract => 45,
-            BinaryOperator::LeftShift => 40,
-            BinaryOperator::RightShift => 40,
-            BinaryOperator::LessThan => 37,
-            BinaryOperator::LessOrEqual => 37,
-            BinaryOperator::GreaterThan => 37,
-            BinaryOperator::GreaterOrEqual => 37,
-            BinaryOperator::Equal => 36,
-            BinaryOperator::NotEqual => 36,
+            BinaryOperator::Multiply | BinaryOperator::Divide | BinaryOperator::Remainder => 50,
+            BinaryOperator::Add | BinaryOperator::Subtract => 45,
+            BinaryOperator::LeftShift | BinaryOperator::RightShift => 40,
+            BinaryOperator::LessThan
+            | BinaryOperator::LessOrEqual
+            | BinaryOperator::GreaterThan
+            | BinaryOperator::GreaterOrEqual => 37,
+            BinaryOperator::Equal | BinaryOperator::NotEqual => 36,
             BinaryOperator::BitwiseAnd => 35,
             BinaryOperator::BitwiseXOr => 34,
             BinaryOperator::BitwiseOr => 33,
             BinaryOperator::And => 10,
             BinaryOperator::Or => 5,
-            BinaryOperator::Assign => 1,
+            BinaryOperator::Assign
+            | BinaryOperator::SumAssign
+            | BinaryOperator::DifferenceAssign
+            | BinaryOperator::ProductAssign
+            | BinaryOperator::QuotientAssign
+            | BinaryOperator::RemainderAssign
+            | BinaryOperator::BitwiseAndAssign
+            | BinaryOperator::BitwiseOrAssign
+            | BinaryOperator::BitwiseXOrAssign
+            | BinaryOperator::LeftShiftAssign
+            | BinaryOperator::RightShiftAssign => 1,
         }
     }
 }
@@ -256,6 +271,16 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         Token::CloseAngleBracket => Some(BinaryOperator::GreaterThan.precedence()),
         Token::CloseAngleBracketEqual => Some(BinaryOperator::GreaterOrEqual.precedence()),
         Token::Equal => Some(BinaryOperator::Assign.precedence()),
+        Token::PlusEqual => Some(BinaryOperator::SumAssign.precedence()),
+        Token::HyphenEqual => Some(BinaryOperator::DifferenceAssign.precedence()),
+        Token::AsteriskEqual => Some(BinaryOperator::ProductAssign.precedence()),
+        Token::ForwardSlashEqual => Some(BinaryOperator::QuotientAssign.precedence()),
+        Token::PercentSignEqual => Some(BinaryOperator::RemainderAssign.precedence()),
+        Token::AmpersandEqual => Some(BinaryOperator::BitwiseAndAssign.precedence()),
+        Token::PipeEqual => Some(BinaryOperator::BitwiseOrAssign.precedence()),
+        Token::CaretEqual => Some(BinaryOperator::BitwiseXOrAssign.precedence()),
+        Token::DoubleOpenAngleBracketEqual => Some(BinaryOperator::LeftShiftAssign.precedence()),
+        Token::DoubleCloseAngleBracketEqual => Some(BinaryOperator::RightShiftAssign.precedence()),
         Token::Identifier(_)
         | Token::Constant(_)
         | Token::Int
@@ -313,8 +338,23 @@ fn parse_expression(lexer_tokens: &[Token], min_precedence: u8) -> Result<(Expre
             }
             _ => {
                 (binary_operator, lexer_tokens) = parse_binary_operator(&lexer_tokens)?;
-                (right, lexer_tokens) =
-                    parse_expression(lexer_tokens, binary_operator.precedence() + 1)?;
+                let enforce_left_precedence: u8 = match binary_operator {
+                    BinaryOperator::SumAssign
+                    | BinaryOperator::DifferenceAssign
+                    | BinaryOperator::ProductAssign
+                    | BinaryOperator::QuotientAssign
+                    | BinaryOperator::RemainderAssign
+                    | BinaryOperator::BitwiseAndAssign
+                    | BinaryOperator::BitwiseOrAssign
+                    | BinaryOperator::BitwiseXOrAssign
+                    | BinaryOperator::LeftShiftAssign
+                    | BinaryOperator::RightShiftAssign => 0,
+                    _ => 1,
+                };
+                (right, lexer_tokens) = parse_expression(
+                    lexer_tokens,
+                    binary_operator.precedence() + enforce_left_precedence,
+                )?;
                 left = Expression::BinaryOperation {
                     binary_operator,
                     left_operand: Box::new(left),
@@ -346,6 +386,20 @@ fn parse_binary_operator(lexer_tokens: &[Token]) -> Result<(BinaryOperator, &[To
         Token::OpenAngleBracketEqual => Ok((BinaryOperator::LessOrEqual, &lexer_tokens[1..])),
         Token::CloseAngleBracket => Ok((BinaryOperator::GreaterThan, &lexer_tokens[1..])),
         Token::CloseAngleBracketEqual => Ok((BinaryOperator::GreaterOrEqual, &lexer_tokens[1..])),
+        Token::PlusEqual => Ok((BinaryOperator::SumAssign, &lexer_tokens[1..])),
+        Token::HyphenEqual => Ok((BinaryOperator::DifferenceAssign, &lexer_tokens[1..])),
+        Token::AsteriskEqual => Ok((BinaryOperator::ProductAssign, &lexer_tokens[1..])),
+        Token::ForwardSlashEqual => Ok((BinaryOperator::QuotientAssign, &lexer_tokens[1..])),
+        Token::PercentSignEqual => Ok((BinaryOperator::RemainderAssign, &lexer_tokens[1..])),
+        Token::AmpersandEqual => Ok((BinaryOperator::BitwiseAndAssign, &lexer_tokens[1..])),
+        Token::PipeEqual => Ok((BinaryOperator::BitwiseOrAssign, &lexer_tokens[1..])),
+        Token::CaretEqual => Ok((BinaryOperator::BitwiseXOrAssign, &lexer_tokens[1..])),
+        Token::DoubleOpenAngleBracketEqual => {
+            Ok((BinaryOperator::LeftShiftAssign, &lexer_tokens[1..]))
+        }
+        Token::DoubleCloseAngleBracketEqual => {
+            Ok((BinaryOperator::RightShiftAssign, &lexer_tokens[1..]))
+        }
         _ => Err(fail()),
     }
 }

@@ -39,6 +39,16 @@ pub enum Token {
     ExclamationEqual,
     OpenAngleBracketEqual,
     CloseAngleBracketEqual,
+    PlusEqual,
+    HyphenEqual,
+    AsteriskEqual,
+    ForwardSlashEqual,
+    PercentSignEqual,
+    AmpersandEqual,
+    PipeEqual,
+    CaretEqual,
+    DoubleOpenAngleBracketEqual,
+    DoubleCloseAngleBracketEqual,
 }
 
 lazy_static! {
@@ -47,12 +57,22 @@ lazy_static! {
     static ref DECREMENT_OPERATOR_REGEX: Regex = Regex::new(r"^--").unwrap();
     static ref LOGICAL_OR_REGEX: Regex = Regex::new(r"^\|\|").unwrap();
     static ref LOGICAL_AND_REGEX: Regex = Regex::new(r"^&&").unwrap();
-    static ref LOGICAL_SHIFT_LEFT_REGEX: Regex = Regex::new(r"^<<").unwrap();
-    static ref LOGICAL_SHIFT_RIGHT_REGEX: Regex = Regex::new(r"^>>").unwrap();
+    static ref SHIFT_LEFT_ASSIGNMENT_REGEX: Regex = Regex::new(r"^<<=").unwrap();
+    static ref SHIFT_RIGHT_ASSIGNMENT_REGEX: Regex = Regex::new(r"^>>=").unwrap();
+    static ref SHIFT_LEFT_REGEX: Regex = Regex::new(r"^<<").unwrap();
+    static ref SHIFT_RIGHT_REGEX: Regex = Regex::new(r"^>>").unwrap();
     static ref LOGICAL_EQUAL_REGEX: Regex = Regex::new(r"^==").unwrap();
     static ref LOGICAL_LESS_THAN_EQUAL_REGEX: Regex = Regex::new(r"^<=").unwrap();
     static ref LOGICAL_MORE_THAN_EQUAL_REGEX: Regex = Regex::new(r"^>=").unwrap();
     static ref LOGICAL_NOT_EQUAL_REGEX: Regex = Regex::new(r"^!=").unwrap();
+    static ref ADDITION_ASSIGNMENT_REGEX: Regex = Regex::new(r"^\+=").unwrap();
+    static ref SUBTRACTION_ASSIGNMENT_REGEX: Regex = Regex::new(r"^-=").unwrap();
+    static ref MULTIPLICATION_ASSIGNMENT_REGEX: Regex = Regex::new(r"^\*=").unwrap();
+    static ref DIVISION_ASSIGNMENT_REGEX: Regex = Regex::new(r"^/=").unwrap();
+    static ref MODULO_ASSIGNMENT_REGEX: Regex = Regex::new(r"^%=").unwrap();
+    static ref BITWISE_AND_ASSIGNMENT_REGEX: Regex = Regex::new(r"^&=").unwrap();
+    static ref BITWISE_OR_ASSIGNMENT_REGEX: Regex = Regex::new(r"^\|=").unwrap();
+    static ref BITWISE_XOR_ASSIGNMENT_REGEX: Regex = Regex::new(r"^\^=").unwrap();
 }
 
 fn lex(partial_line: &str) -> (Option<Token>, &str) {
@@ -80,27 +100,30 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
         let (_token_str, remainder) = partial_line.split_at(token.end());
         return (Some(Token::DoubleHyphen), remainder);
     }
-
     if let Some(token) = LOGICAL_OR_REGEX.find(&partial_line) {
         let (_token_str, remainder) = partial_line.split_at(token.end());
         return (Some(Token::DoublePipe), remainder);
     }
-
     if let Some(token) = LOGICAL_AND_REGEX.find(&partial_line) {
         let (_token_str, remainder) = partial_line.split_at(token.end());
         return (Some(Token::DoubleAmpersand), remainder);
     }
-
-    if let Some(token) = LOGICAL_SHIFT_LEFT_REGEX.find(&partial_line) {
+    if let Some(token) = SHIFT_LEFT_ASSIGNMENT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::DoubleOpenAngleBracketEqual), remainder);
+    }
+    if let Some(token) = SHIFT_RIGHT_ASSIGNMENT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::DoubleCloseAngleBracketEqual), remainder);
+    }
+    if let Some(token) = SHIFT_LEFT_REGEX.find(&partial_line) {
         let (_token_str, remainder) = partial_line.split_at(token.end());
         return (Some(Token::DoubleOpenAngleBracket), remainder);
     }
-
-    if let Some(token) = LOGICAL_SHIFT_RIGHT_REGEX.find(&partial_line) {
+    if let Some(token) = SHIFT_RIGHT_REGEX.find(&partial_line) {
         let (_token_str, remainder) = partial_line.split_at(token.end());
         return (Some(Token::DoubleCloseAngleBracket), remainder);
     }
-
     if let Some(token) = LOGICAL_EQUAL_REGEX.find(&partial_line) {
         let (_token_str, remainder) = partial_line.split_at(token.end());
         return (Some(Token::DoubleEqual), remainder);
@@ -117,6 +140,39 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
         let (_token_str, remainder) = partial_line.split_at(token.end());
         return (Some(Token::ExclamationEqual), remainder);
     }
+    if let Some(token) = ADDITION_ASSIGNMENT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::PlusEqual), remainder);
+    }
+    if let Some(token) = SUBTRACTION_ASSIGNMENT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::HyphenEqual), remainder);
+    }
+    if let Some(token) = MULTIPLICATION_ASSIGNMENT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::AsteriskEqual), remainder);
+    }
+    if let Some(token) = DIVISION_ASSIGNMENT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::ForwardSlashEqual), remainder);
+    }
+    if let Some(token) = MODULO_ASSIGNMENT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::PercentSignEqual), remainder);
+    }
+    if let Some(token) = BITWISE_AND_ASSIGNMENT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::AmpersandEqual), remainder);
+    }
+    if let Some(token) = BITWISE_OR_ASSIGNMENT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::PipeEqual), remainder);
+    }
+    if let Some(token) = BITWISE_XOR_ASSIGNMENT_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::CaretEqual), remainder);
+    }
+
     if !partial_line.is_empty() {
         let (token_str, remainder) = partial_line.split_at(1);
         return match token_str {
