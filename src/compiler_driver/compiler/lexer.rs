@@ -11,6 +11,8 @@ pub enum Token {
     Constant(usize),
     Int,
     Void,
+    If,
+    Else,
     Return,
     OpenParenthesis,
     CloseParenthesis,
@@ -50,6 +52,8 @@ pub enum Token {
     CaretEqual,
     DoubleOpenAngleBracketEqual,
     DoubleCloseAngleBracketEqual,
+    QuestionMark,
+    Colon,
 }
 
 lazy_static! {
@@ -86,6 +90,8 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
             "int" => (Some(Token::Int), remainder),
             "void" => (Some(Token::Void), remainder),
             "return" => (Some(Token::Return), remainder),
+            "if" => (Some(Token::If), remainder),
+            "else" => (Some(Token::Else), remainder),
             _ => (Some(Token::Identifier(String::from(token_str))), remainder),
         };
     }
@@ -200,6 +206,8 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
             ">" => (Some(Token::CloseAngleBracket), remainder),
             "!" => (Some(Token::Exclamation), remainder),
             "=" => (Some(Token::Equal), remainder),
+            "?" => (Some(Token::QuestionMark), remainder),
+            ":" => (Some(Token::Colon), remainder),
             _ => (None, remainder),
         };
     }

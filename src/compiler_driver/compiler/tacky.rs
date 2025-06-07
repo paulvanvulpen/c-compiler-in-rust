@@ -143,6 +143,9 @@ fn convert_binary_operator(binary_operator: parser::BinaryOperator) -> BinaryOpe
         parser::BinaryOperator::Assign => panic!(
             "parser should have converted the Assign operation into an Assignment Expressions"
         ),
+        parser::BinaryOperator::Conditional => panic!(
+            "parser should have converted the conditional operation into a Conditional Expression"
+        ),
     }
 }
 
@@ -247,6 +250,9 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
         } => match binary_operator {
             parser::BinaryOperator::Assign => panic!(
                 "parser should have converted the Assign operation into an Assignment Expressions"
+            ),
+            parser::BinaryOperator::Conditional => panic!(
+                "parser should have converted the conditional operation into a Conditional Expression"
             ),
             parser::BinaryOperator::Add
             | parser::BinaryOperator::Subtract
@@ -445,6 +451,9 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
             });
             (instructions, lvalue)
         }
+        parser::Expression::Conditional(lhs_expression, middle_expression, right_expression) => {
+            todo!()
+        }
     }
 }
 
@@ -455,6 +464,11 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
             instructions.push(Instruction::Return(final_destination));
             instructions
         }
+        parser::Statement::If {
+            condition,
+            then_statement,
+            optional_else_statement,
+        } => todo!(),
         parser::Statement::Expression(expression) => {
             let (instructions, ..) = convert_expression(expression);
             instructions

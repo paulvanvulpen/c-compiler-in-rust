@@ -41,6 +41,15 @@ fn resolve_statement(
             expression,
             variable_map,
         )?)),
+        parser::Statement::If {
+            condition,
+            then_statement,
+            optional_else_statement,
+        } => Ok(parser::Statement::If {
+            condition: resolve_expression(condition, variable_map)?,
+            then_statement,
+            optional_else_statement,
+        }),
         parser::Statement::Expression(expression) => Ok(parser::Statement::Expression(
             resolve_expression(expression, variable_map)?,
         )),
@@ -113,6 +122,9 @@ fn resolve_expression(
                 parser::BinaryOperator::Assign => panic!(
                     "parser should have converted the Assign operation into an Assignment Expressions"
                 ),
+                parser::BinaryOperator::Conditional => panic!(
+                    "parser should have converted the conditional operation into a Conditional Expression"
+                ),
             }
             Ok(parser::Expression::BinaryOperation {
                 binary_operator,
@@ -140,6 +152,7 @@ fn resolve_expression(
                 ))
             }
         },
+        parser::Expression::Conditional(exp1, exp2, exp3) => todo!(),
     }
 }
 
