@@ -69,6 +69,10 @@ pub enum UnaryOperator {
     Complement,
     Negate,
     Not,
+    PrefixDecrement,
+    PostfixDecrement,
+    PrefixIncrement,
+    PostfixIncrement,
 }
 
 pub enum BinaryOperator {
@@ -147,6 +151,10 @@ fn convert_unary_operator(unary_operator: parser::UnaryOperator) -> UnaryOperato
         parser::UnaryOperator::Complement => UnaryOperator::Complement,
         parser::UnaryOperator::Negate => UnaryOperator::Negate,
         parser::UnaryOperator::Not => UnaryOperator::Not,
+        parser::UnaryOperator::PrefixDecrement => UnaryOperator::PrefixDecrement,
+        parser::UnaryOperator::PostfixDecrement => UnaryOperator::PostfixDecrement,
+        parser::UnaryOperator::PrefixIncrement => UnaryOperator::PrefixIncrement,
+        parser::UnaryOperator::PostfixIncrement => UnaryOperator::PostfixIncrement,
     }
 }
 
@@ -172,16 +180,65 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
             (instructions, Val::Var(identifier))
         }
         parser::Expression::Unary(unary_operator, boxed_expression) => {
-            let (mut instructions, source) = convert_expression(*boxed_expression);
-            let destination = make_temporary();
-            let destination = Val::Var(destination);
             let unary_operator = convert_unary_operator(unary_operator);
-            instructions.push(Instruction::Unary {
-                unary_operator,
-                source,
-                destination: destination.clone(),
-            });
-            (instructions, destination)
+            match unary_operator {
+                UnaryOperator::Complement | UnaryOperator::Negate | UnaryOperator::Not => {
+                    let (mut instructions, source) = convert_expression(*boxed_expression);
+                    let destination = Val::Var(make_temporary());
+                    instructions.push(Instruction::Unary {
+                        unary_operator,
+                        source,
+                        destination: destination.clone(),
+                    });
+                    (instructions, destination)
+                }
+                UnaryOperator::PrefixDecrement => {
+                    convert_expression(parser::Expression::BinaryOperation {
+                        binary_operator: parser::BinaryOperator::DifferenceAssign,
+                        left_operand: boxed_expression,
+                        right_operand: Box::new(parser::Expression::Constant(1)),
+                    })
+                }
+                UnaryOperator::PrefixIncrement => {
+                    convert_expression(parser::Expression::BinaryOperation {
+                        binary_operator: parser::BinaryOperator::SumAssign,
+                        left_operand: boxed_expression,
+                        right_operand: Box::new(parser::Expression::Constant(1)),
+                    })
+                }
+                UnaryOperator::PostfixDecrement | UnaryOperator::PostfixIncrement => {
+                    let (mut instructions, destination_operand) =
+                        convert_expression(*boxed_expression);
+
+                    let unmodified_rhs = Val::Var(make_temporary());
+
+                    instructions.push(Instruction::Copy {
+                        source: destination_operand.clone(),
+                        destination: unmodified_rhs.clone(),
+                    });
+
+                    let destination = Val::Var(make_temporary());
+                    let binary_operator = match unary_operator {
+                        UnaryOperator::PostfixDecrement => BinaryOperator::Subtract,
+                        UnaryOperator::PostfixIncrement => BinaryOperator::Add,
+                        _ => panic!("Expected postfix operator"),
+                    };
+
+                    instructions.push(Instruction::Binary {
+                        binary_operator: binary_operator,
+                        source1: destination_operand.clone(),
+                        source2: Val::Constant(1),
+                        destination: destination.clone(),
+                    });
+
+                    instructions.push(Instruction::Copy {
+                        source: destination,
+                        destination: destination_operand,
+                    });
+
+                    (instructions, unmodified_rhs)
+                }
+            }
         }
         parser::Expression::BinaryOperation {
             binary_operator,
@@ -235,7 +292,6 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
             | parser::BinaryOperator::BitwiseXOrAssign
             | parser::BinaryOperator::LeftShiftAssign
             | parser::BinaryOperator::RightShiftAssign => {
-                // TODO: "Evaluate whether to use convert_expression here"
                 let binary_operator = convert_binary_operator(binary_operator);
                 let (mut instructions1, destination_left_operand) =
                     convert_expression(*left_operand);

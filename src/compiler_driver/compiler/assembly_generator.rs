@@ -99,6 +99,12 @@ fn convert_unary_operator(unary_operator: tacky::UnaryOperator) -> UnaryOperator
         tacky::UnaryOperator::Complement => UnaryOperator::Not,
         tacky::UnaryOperator::Negate => UnaryOperator::Neg,
         tacky::UnaryOperator::Not => UnaryOperator::Not,
+        tacky::UnaryOperator::PrefixDecrement
+        | tacky::UnaryOperator::PostfixDecrement
+        | tacky::UnaryOperator::PrefixIncrement
+        | tacky::UnaryOperator::PostfixIncrement => {
+            panic!("these should have been converted by tacky")
+        }
     }
 }
 
@@ -153,6 +159,12 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
                 Instruction::Mov(Operand::Immediate(0), convert_val(destination.clone())),
                 Instruction::SetCC(ConditionCode::E, convert_val(destination)),
             ],
+            tacky::UnaryOperator::PrefixDecrement
+            | tacky::UnaryOperator::PostfixDecrement
+            | tacky::UnaryOperator::PrefixIncrement
+            | tacky::UnaryOperator::PostfixIncrement => {
+                panic!("these should have been converted by tacky")
+            }
         },
         tacky::Instruction::Binary {
             binary_operator,

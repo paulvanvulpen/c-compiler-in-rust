@@ -120,10 +120,26 @@ fn resolve_expression(
                 right_operand: Box::new(resolve_expression(*right_operand, variable_map)?),
             })
         }
-        parser::Expression::Unary(unary_operator, expression) => Ok(parser::Expression::Unary(
-            unary_operator,
-            Box::new(resolve_expression(*expression, variable_map)?),
-        )),
+        parser::Expression::Unary(unary_operator, expression) => match unary_operator {
+            parser::UnaryOperator::Negate
+            | parser::UnaryOperator::Not
+            | parser::UnaryOperator::Complement => Ok(parser::Expression::Unary(
+                unary_operator,
+                Box::new(resolve_expression(*expression, variable_map)?),
+            )),
+            parser::UnaryOperator::PrefixDecrement
+            | parser::UnaryOperator::PostfixDecrement
+            | parser::UnaryOperator::PrefixIncrement
+            | parser::UnaryOperator::PostfixIncrement => {
+                if !matches!(*expression, parser::Expression::Var { .. }) {
+                    return Err(anyhow!("invalid lvalue {:?}", (*expression).visualize(0)));
+                }
+                Ok(parser::Expression::Unary(
+                    unary_operator,
+                    Box::new(resolve_expression(*expression, variable_map)?),
+                ))
+            }
+        },
     }
 }
 

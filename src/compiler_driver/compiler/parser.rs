@@ -11,7 +11,7 @@ mod visualize;
 // declaration = Declaration(identifier name, exp? init)
 // block_item = S(statement) | D(declaration)
 // exp = Constant(int) | Var(identifier) | Unary(unary_operator, exp) | Binary(binary_operator, exp, exp) | Assignment(exp, exp)
-// unary_operator = Complement | Negate | Not
+// unary_operator = Complement | Negate | Not | PrefixDecrement | PostfixDecrement | PrefixIncrement | PostfixIncrement
 // binary_operator = Add | Subtract | Multiply | Divide | Remainder | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual
 
 pub enum AbstractSyntaxTree {
@@ -88,6 +88,10 @@ pub enum UnaryOperator {
     Complement,
     Negate,
     Not,
+    PrefixDecrement,
+    PostfixDecrement,
+    PrefixIncrement,
+    PostfixIncrement,
 }
 
 // <binop>
@@ -206,6 +210,7 @@ fn parse_block_item(lexer_tokens: &[Token]) -> Result<(BlockItem, &[Token])> {
     }
 }
 
+// <declaration> ::= "int" <identifier> [ "=" <exp> ]
 fn parse_declaration(lexer_tokens: &[Token]) -> Result<(Declaration, &[Token])> {
     let lexer_tokens = expect(Token::Int, lexer_tokens)?;
     let (identifier, lexer_tokens) = parse_identifier(lexer_tokens)?;
@@ -292,40 +297,85 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         | Token::CloseBrace
         | Token::Semicolon
         | Token::Tilde
+        | Token::Exclamation
         | Token::DoubleHyphen
-        | Token::Exclamation => None,
+        | Token::DoublePlus => None,
     }
 }
 
-// <factor> ::= <int> | <unop> <factor> | "(" <exp> ")"
-// <int> ::= ? A constant token ?
-fn parse_factor(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
+// <primary> ::= <int> | <identifier> [ <postfix_op> ] | "(" <exp> ")" [ <postfix_op> ]
+fn parse_primary(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
     match &lexer_tokens[0] {
-        Token::Tilde | Token::Hyphen | Token::Exclamation => {
-            let (unary_op, lexer_tokens) = parse_unary_operator(&lexer_tokens)?;
-            let (factor, lexer_tokens) = parse_factor(lexer_tokens)?;
-            Ok((Expression::Unary(unary_op, Box::new(factor)), lexer_tokens))
-        }
         Token::Constant(constant) => Ok((Expression::Constant(*constant), &lexer_tokens[1..])),
-        Token::Identifier(identifier) => Ok((
-            Expression::Var {
-                identifier: identifier.clone(),
-            },
-            &lexer_tokens[1..],
-        )),
+        Token::Identifier(identifier) => match &lexer_tokens[1] {
+            Token::DoubleHyphen => Ok((
+                Expression::Unary(
+                    UnaryOperator::PostfixDecrement,
+                    Box::new(Expression::Var {
+                        identifier: identifier.clone(),
+                    }),
+                ),
+                &lexer_tokens[2..],
+            )),
+            Token::DoublePlus => Ok((
+                Expression::Unary(
+                    UnaryOperator::PostfixIncrement,
+                    Box::new(Expression::Var {
+                        identifier: identifier.clone(),
+                    }),
+                ),
+                &lexer_tokens[2..],
+            )),
+            _ => Ok((
+                Expression::Var {
+                    identifier: identifier.clone(),
+                },
+                &lexer_tokens[1..],
+            )),
+        },
         Token::OpenParenthesis => {
             let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)?;
             let (expression, lexer_tokens) = parse_expression(lexer_tokens, 0)?;
             let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)?;
-            Ok((expression, lexer_tokens))
+            if matches!(&expression, Expression::Var { .. }) {
+                match &lexer_tokens[0] {
+                    Token::DoubleHyphen => Ok((
+                        Expression::Unary(UnaryOperator::PostfixDecrement, Box::new(expression)),
+                        &lexer_tokens[1..],
+                    )),
+                    Token::DoublePlus => Ok((
+                        Expression::Unary(UnaryOperator::PostfixIncrement, Box::new(expression)),
+                        &lexer_tokens[1..],
+                    )),
+                    _ => Ok((expression, lexer_tokens)),
+                }
+            } else {
+                Ok((expression, lexer_tokens))
+            }
         }
         _ => Err(fail()),
     }
 }
 
-// <exp> ::= <factor> | <exp> <binop> <exp>
+// unary_exp> ::= <prefix_op> <unary_exp> | <primary>
+fn parse_unary_expression(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
+    match &lexer_tokens[0] {
+        Token::Hyphen
+        | Token::Tilde
+        | Token::Exclamation
+        | Token::DoubleHyphen
+        | Token::DoublePlus => {
+            let (unary_op, lexer_tokens) = parse_prefix_operator(&lexer_tokens)?;
+            let (factor, lexer_tokens) = parse_unary_expression(lexer_tokens)?;
+            Ok((Expression::Unary(unary_op, Box::new(factor)), lexer_tokens))
+        }
+        _ => parse_primary(lexer_tokens),
+    }
+}
+
+// <exp> ::= <unary_exp> | <exp> <binop> <exp>
 fn parse_expression(lexer_tokens: &[Token], min_precedence: u8) -> Result<(Expression, &[Token])> {
-    let (mut left, mut lexer_tokens) = parse_factor(lexer_tokens)?;
+    let (mut left, mut lexer_tokens) = parse_unary_expression(lexer_tokens)?;
     let mut right;
     let mut binary_operator;
     while get_binary_operator_precedence(&lexer_tokens[0]) >= Some(min_precedence) {
@@ -404,21 +454,29 @@ fn parse_binary_operator(lexer_tokens: &[Token]) -> Result<(BinaryOperator, &[To
     }
 }
 
-// <unop> ::= "-" | "~" | "!"
-fn parse_unary_operator(lexer_tokens: &[Token]) -> Result<(UnaryOperator, &[Token])> {
+// <unop> ::= "-" | "~" | "!" | -- | ++
+fn parse_prefix_operator(lexer_tokens: &[Token]) -> Result<(UnaryOperator, &[Token])> {
     match &lexer_tokens[0] {
         Token::Hyphen => Ok((UnaryOperator::Negate, &lexer_tokens[1..])),
         Token::Tilde => Ok((UnaryOperator::Complement, &lexer_tokens[1..])),
         Token::Exclamation => Ok((UnaryOperator::Not, &lexer_tokens[1..])),
+        Token::DoubleHyphen => Ok((UnaryOperator::PrefixDecrement, &lexer_tokens[1..])),
+        Token::DoublePlus => Ok((UnaryOperator::PrefixIncrement, &lexer_tokens[1..])),
         _ => Err(fail()),
     }
 }
 
 fn expect(expected: Token, lexer_tokens: &[Token]) -> Result<&[Token]> {
     match lexer_tokens {
-        t if t.is_empty() || (discriminant(&expected) != discriminant(&lexer_tokens[0])) => {
-            Err(fail())
-        }
+        t if t.is_empty() => Err(anyhow!(
+            "Syntax error, expected {:?} but found nothing",
+            expected
+        )),
+        t if (discriminant(&expected) != discriminant(&t[0])) => Err(anyhow!(
+            "Syntax error, expected {:?} but found {:?}",
+            expected,
+            &t[0]
+        )),
         _ => Ok(&lexer_tokens[1..]),
     }
 }

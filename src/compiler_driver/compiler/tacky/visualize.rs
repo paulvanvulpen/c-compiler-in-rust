@@ -103,6 +103,10 @@ impl visualize::Visualizer for tacky::UnaryOperator {
             tacky::UnaryOperator::Complement => String::from("Complement"),
             tacky::UnaryOperator::Negate => String::from("Negate"),
             tacky::UnaryOperator::Not => String::from("Not"),
+            tacky::UnaryOperator::PrefixDecrement => String::from("PrefixDecrement"),
+            tacky::UnaryOperator::PostfixDecrement => String::from("PostfixDecrement"),
+            tacky::UnaryOperator::PrefixIncrement => String::from("PrefixIncrement"),
+            tacky::UnaryOperator::PostfixIncrement => String::from("PostfixIncrement"),
         }
     }
 }

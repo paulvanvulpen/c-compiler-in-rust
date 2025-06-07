@@ -5,7 +5,7 @@ use std::path::Path;
 
 use lazy_static::lazy_static;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Token {
     Identifier(String),
     Constant(usize),
@@ -20,6 +20,7 @@ pub enum Token {
     Tilde,
     Hyphen,
     DoubleHyphen,
+    DoublePlus,
     Plus,
     Asterisk,
     ForwardSlash,
@@ -55,6 +56,7 @@ lazy_static! {
     static ref IDENTIFIER_REGEX: Regex = Regex::new(r"^[A-Za-z_]\w*\b").unwrap();
     static ref CONSTANT_REGEX: Regex = Regex::new(r"^\d+\b").unwrap();
     static ref DECREMENT_OPERATOR_REGEX: Regex = Regex::new(r"^--").unwrap();
+    static ref INCREMENT_OPERATOR_REGEX: Regex = Regex::new(r"^\+\+").unwrap();
     static ref LOGICAL_OR_REGEX: Regex = Regex::new(r"^\|\|").unwrap();
     static ref LOGICAL_AND_REGEX: Regex = Regex::new(r"^&&").unwrap();
     static ref SHIFT_LEFT_ASSIGNMENT_REGEX: Regex = Regex::new(r"^<<=").unwrap();
@@ -99,6 +101,10 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
     if let Some(token) = DECREMENT_OPERATOR_REGEX.find(&partial_line) {
         let (_token_str, remainder) = partial_line.split_at(token.end());
         return (Some(Token::DoubleHyphen), remainder);
+    }
+    if let Some(token) = INCREMENT_OPERATOR_REGEX.find(&partial_line) {
+        let (_token_str, remainder) = partial_line.split_at(token.end());
+        return (Some(Token::DoublePlus), remainder);
     }
     if let Some(token) = LOGICAL_OR_REGEX.find(&partial_line) {
         let (_token_str, remainder) = partial_line.split_at(token.end());

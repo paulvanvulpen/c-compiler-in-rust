@@ -164,6 +164,12 @@ impl visualize::Visualizer for parser::UnaryOperator {
             parser::UnaryOperator::Complement => String::from("~"),
             parser::UnaryOperator::Negate => String::from("-"),
             parser::UnaryOperator::Not => String::from("!"),
+            parser::UnaryOperator::PrefixDecrement | parser::UnaryOperator::PostfixDecrement => {
+                String::from("--")
+            }
+            parser::UnaryOperator::PrefixIncrement | parser::UnaryOperator::PostfixIncrement => {
+                String::from("++")
+            }
         }
     }
 }
