@@ -358,58 +358,86 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
     }
 }
 
+fn parse_postfix_operator(lexer_tokens: &[Token]) -> Option<UnaryOperator> {
+    match &lexer_tokens[0] {
+        Token::DoubleHyphen => Some(UnaryOperator::PostfixDecrement),
+        Token::DoublePlus => Some(UnaryOperator::PostfixIncrement),
+        Token::Identifier(_)
+        | Token::Constant(_)
+        | Token::Int
+        | Token::Void
+        | Token::If
+        | Token::Else
+        | Token::Return
+        | Token::OpenParenthesis
+        | Token::CloseParenthesis
+        | Token::OpenBrace
+        | Token::CloseBrace
+        | Token::Semicolon
+        | Token::Tilde
+        | Token::Hyphen
+        | Token::Plus
+        | Token::Asterisk
+        | Token::ForwardSlash
+        | Token::PercentSign
+        | Token::Pipe
+        | Token::DoublePipe
+        | Token::Ampersand
+        | Token::DoubleAmpersand
+        | Token::Caret
+        | Token::OpenAngleBracket
+        | Token::DoubleOpenAngleBracket
+        | Token::CloseAngleBracket
+        | Token::DoubleCloseAngleBracket
+        | Token::Exclamation
+        | Token::Equal
+        | Token::DoubleEqual
+        | Token::ExclamationEqual
+        | Token::OpenAngleBracketEqual
+        | Token::CloseAngleBracketEqual
+        | Token::PlusEqual
+        | Token::HyphenEqual
+        | Token::AsteriskEqual
+        | Token::ForwardSlashEqual
+        | Token::PercentSignEqual
+        | Token::AmpersandEqual
+        | Token::PipeEqual
+        | Token::CaretEqual
+        | Token::DoubleOpenAngleBracketEqual
+        | Token::DoubleCloseAngleBracketEqual
+        | Token::QuestionMark
+        | Token::Colon => None,
+    }
+}
+
 // <primary> ::= <int> | <identifier> [ <postfix_op> ] | "(" <exp> ")" [ <postfix_op> ]
 fn parse_primary(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
     match &lexer_tokens[0] {
         Token::Constant(constant) => Ok((Expression::Constant(*constant), &lexer_tokens[1..])),
-        Token::Identifier(identifier) => match &lexer_tokens[1] {
-            Token::DoubleHyphen => Ok((
-                Expression::Unary(
-                    UnaryOperator::PostfixDecrement,
-                    Box::new(Expression::Var {
-                        identifier: identifier.clone(),
-                    }),
-                ),
-                &lexer_tokens[2..],
-            )),
-            Token::DoublePlus => Ok((
-                Expression::Unary(
-                    UnaryOperator::PostfixIncrement,
-                    Box::new(Expression::Var {
-                        identifier: identifier.clone(),
-                    }),
-                ),
-                &lexer_tokens[2..],
-            )),
-            _ => Ok((
-                Expression::Var {
-                    identifier: identifier.clone(),
-                },
-                &lexer_tokens[1..],
-            )),
-        },
+        Token::Identifier(identifier) => {
+            let mut left = Expression::Var {
+                identifier: identifier.clone(),
+            };
+            let mut lexer_tokens = &lexer_tokens[1..];
+            while let Some(unary_operator) = parse_postfix_operator(&lexer_tokens) {
+                left = Expression::Unary(unary_operator, Box::new(left));
+                lexer_tokens = &lexer_tokens[1..];
+            }
+            Ok((left, lexer_tokens))
+        }
         Token::OpenParenthesis => {
-            let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)
-                .context("parsing a primary expression")?;
+            let lexer_tokens = &lexer_tokens[1..];
             let (expression, lexer_tokens) =
                 parse_expression(lexer_tokens, 0).context("parsing a primary expression")?;
             let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
                 .context("parsing a primary expression")?;
-            if matches!(&expression, Expression::Var { .. }) {
-                match &lexer_tokens[0] {
-                    Token::DoubleHyphen => Ok((
-                        Expression::Unary(UnaryOperator::PostfixDecrement, Box::new(expression)),
-                        &lexer_tokens[1..],
-                    )),
-                    Token::DoublePlus => Ok((
-                        Expression::Unary(UnaryOperator::PostfixIncrement, Box::new(expression)),
-                        &lexer_tokens[1..],
-                    )),
-                    _ => Ok((expression, lexer_tokens)),
-                }
-            } else {
-                Ok((expression, lexer_tokens))
+            let mut left = expression;
+            let mut lexer_tokens = &lexer_tokens[..];
+            while let Some(unary_operator) = parse_postfix_operator(&lexer_tokens) {
+                left = Expression::Unary(unary_operator, Box::new(left));
+                lexer_tokens = &lexer_tokens[1..];
             }
+            Ok((left, lexer_tokens))
         }
         _ => Err(anyhow!(
             "Syntax error, found token {:?} while parsing a primary expression",
