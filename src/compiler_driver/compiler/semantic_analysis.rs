@@ -47,8 +47,12 @@ fn resolve_statement(
             optional_else_statement,
         } => Ok(parser::Statement::If {
             condition: resolve_expression(condition, variable_map)?,
-            then_statement,
-            optional_else_statement,
+            then_statement: Box::new(resolve_statement(*then_statement, variable_map)?),
+            optional_else_statement: if let Some(else_statement) = optional_else_statement {
+                Some(Box::new(resolve_statement(*else_statement, variable_map)?))
+            } else {
+                None
+            },
         }),
         parser::Statement::Expression(expression) => Ok(parser::Statement::Expression(
             resolve_expression(expression, variable_map)?,
@@ -152,7 +156,11 @@ fn resolve_expression(
                 ))
             }
         },
-        parser::Expression::Conditional(exp1, exp2, exp3) => todo!(),
+        parser::Expression::Conditional(exp1, exp2, exp3) => Ok(parser::Expression::Conditional(
+            Box::new(resolve_expression(*exp1, variable_map)?),
+            Box::new(resolve_expression(*exp2, variable_map)?),
+            Box::new(resolve_expression(*exp3, variable_map)?),
+        )),
     }
 }
 
