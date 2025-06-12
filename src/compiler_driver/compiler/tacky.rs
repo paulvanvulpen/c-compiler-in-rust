@@ -273,9 +273,8 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 let binary_operator = convert_binary_operator(binary_operator);
                 let (mut instructions1, destination_left_operand) =
                     convert_expression(*left_operand);
-                let (mut instructions2, destination_right_operand) =
-                    convert_expression(*right_operand);
-                instructions1.append(&mut instructions2);
+                let (instructions2, destination_right_operand) = convert_expression(*right_operand);
+                instructions1.extend(instructions2);
                 let mut instructions = instructions1;
 
                 let final_destination = make_temporary();
@@ -301,9 +300,8 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 let binary_operator = convert_binary_operator(binary_operator);
                 let (mut instructions1, destination_left_operand) =
                     convert_expression(*left_operand);
-                let (mut instructions2, destination_right_operand) =
-                    convert_expression(*right_operand);
-                instructions1.append(&mut instructions2);
+                let (instructions2, destination_right_operand) = convert_expression(*right_operand);
+                instructions1.extend(instructions2);
                 let mut instructions = instructions1;
 
                 let final_destination = make_temporary();
@@ -343,11 +341,11 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                     target: false_label.clone(),
                 });
 
-                let (mut right_instructions, destination_right_operand) =
+                let (right_instructions, destination_right_operand) =
                     convert_expression(*right_operand);
                 let right_expression_result = make_temporary();
                 let right_expression_result = Val::Var(right_expression_result);
-                instructions.append(&mut right_instructions);
+                instructions.extend(right_instructions);
                 instructions.push(Instruction::Copy {
                     source: destination_right_operand,
                     destination: right_expression_result.clone(),
@@ -402,11 +400,11 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                     target: true_label.clone(),
                 });
 
-                let (mut right_instructions, destination_right_operand) =
+                let (right_instructions, destination_right_operand) =
                     convert_expression(*right_operand);
                 let right_expression_result = make_temporary();
                 let right_expression_result = Val::Var(right_expression_result);
-                instructions.append(&mut right_instructions);
+                instructions.extend(right_instructions);
                 instructions.push(Instruction::Copy {
                     source: destination_right_operand,
                     destination: right_expression_result.clone(),
@@ -468,7 +466,46 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
             condition,
             then_statement,
             optional_else_statement,
-        } => todo!(),
+        } => match optional_else_statement {
+            Some(else_statement) => {
+                let end_label: String = make_label("end");
+                let else_label: String = make_label("else");
+                let (mut instructions, result) = convert_expression(condition);
+                instructions.push(Instruction::JumpIfZero {
+                    condition: result,
+                    target: else_label.clone(),
+                });
+                let then_instructions = convert_statement(*then_statement);
+                instructions.extend(then_instructions);
+                instructions.push(Instruction::Jump {
+                    target: end_label.clone(),
+                });
+                instructions.push(Instruction::Label {
+                    identifier: else_label,
+                });
+                let else_instructions = convert_statement(*else_statement);
+                instructions.extend(else_instructions);
+                instructions.push(Instruction::Label {
+                    identifier: end_label,
+                });
+                instructions
+            }
+            None => {
+                let end_label: String = make_label("end");
+                let (mut instructions, result) = convert_expression(condition);
+                instructions.push(Instruction::JumpIfZero {
+                    condition: result,
+                    target: end_label.clone(),
+                });
+                let then_instructions = convert_statement(*then_statement);
+                instructions.extend(then_instructions);
+
+                instructions.push(Instruction::Label {
+                    identifier: end_label,
+                });
+                instructions
+            }
+        },
         parser::Statement::Expression(expression) => {
             let (instructions, ..) = convert_expression(expression);
             instructions
@@ -499,14 +536,14 @@ fn convert_function_definition(
                                 Box::new(parser::Expression::Var { identifier }),
                                 Box::new(unpacked_init),
                             );
-                            let (mut instructions, ..) = convert_expression(assignment_expression);
-                            tacky_body.append(&mut instructions);
+                            let (instructions, ..) = convert_expression(assignment_expression);
+                            tacky_body.extend(instructions);
                         }
                     }
                     parser::BlockItem::Statement(statement) => {
                         let original = std::mem::take(statement);
-                        let mut instructions = convert_statement(original);
-                        tacky_body.append(&mut instructions);
+                        let instructions = convert_statement(original);
+                        tacky_body.extend(instructions);
                     }
                 }
             }

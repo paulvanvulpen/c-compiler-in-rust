@@ -292,13 +292,6 @@ fn convert_ast(ast: tacky::TackyAbstractSyntaxTree) -> AssemblyAbstractSyntaxTre
     }
 }
 
-pub fn run_assembly_generator(
-    tacky_ast: tacky::TackyAbstractSyntaxTree,
-) -> anyhow::Result<AssemblyAbstractSyntaxTree> {
-    let assembly_ast = convert_ast(tacky_ast);
-    Ok(assembly_ast)
-}
-
 pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -> usize {
     let mut temporary_to_offset: HashMap<String, isize> = HashMap::new();
     let mut alloc_size: usize = 0;
@@ -431,4 +424,11 @@ pub fn fix_up_invalid_instructions(
 
     let old = std::mem::take(instructions);
     *instructions = fix_up_instructions(old);
+}
+
+pub fn run_assembly_generator(
+    tacky_ast: tacky::TackyAbstractSyntaxTree,
+) -> anyhow::Result<AssemblyAbstractSyntaxTree> {
+    let assembly_ast = convert_ast(tacky_ast);
+    Ok(assembly_ast)
 }

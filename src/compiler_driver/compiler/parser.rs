@@ -578,7 +578,7 @@ fn expect(expected: Token, lexer_tokens: &[Token]) -> Result<&[Token]> {
             "Syntax error, expected {:?} but found nothing",
             expected
         )),
-        t if (discriminant(&expected) != discriminant(&t[0])) => Err(anyhow!(
+        t if discriminant(&expected) != discriminant(&t[0]) => Err(anyhow!(
             "Syntax error, expected {:?} but found {:?}",
             expected,
             &t[0]
