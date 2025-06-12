@@ -470,11 +470,20 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
             Some(else_statement) => {
                 let end_label: String = make_label("end");
                 let else_label: String = make_label("else");
-                let (mut instructions, result) = convert_expression(condition);
+
+                let (mut instructions, condition_destination) = convert_expression(condition);
+                let right_expression_result = make_temporary();
+                let right_expression_result = Val::Var(right_expression_result);
+                instructions.push(Instruction::Copy {
+                    source: condition_destination,
+                    destination: right_expression_result.clone(),
+                });
+
                 instructions.push(Instruction::JumpIfZero {
-                    condition: result,
+                    condition: right_expression_result,
                     target: else_label.clone(),
                 });
+
                 let then_instructions = convert_statement(*then_statement);
                 instructions.extend(then_instructions);
                 instructions.push(Instruction::Jump {
@@ -492,9 +501,15 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
             }
             None => {
                 let end_label: String = make_label("end");
-                let (mut instructions, result) = convert_expression(condition);
+                let (mut instructions, condition_destination) = convert_expression(condition);
+                let right_expression_result = make_temporary();
+                let right_expression_result = Val::Var(right_expression_result);
+                instructions.push(Instruction::Copy {
+                    source: condition_destination,
+                    destination: right_expression_result.clone(),
+                });
                 instructions.push(Instruction::JumpIfZero {
-                    condition: result,
+                    condition: right_expression_result,
                     target: end_label.clone(),
                 });
                 let then_instructions = convert_statement(*then_statement);
