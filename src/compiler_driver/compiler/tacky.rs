@@ -449,8 +449,57 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
             });
             (instructions, lvalue)
         }
-        parser::Expression::Conditional(lhs_expression, middle_expression, right_expression) => {
-            todo!()
+        parser::Expression::Conditional(left_expression, middle_expression, right_expression) => {
+            let end_label: String = make_label("end");
+            let else_label: String = make_label("else");
+
+            let (mut instructions, condition_destination) = convert_expression(*left_expression);
+            let left_expression_result = make_temporary();
+            let left_expression_result = Val::Var(left_expression_result);
+            instructions.push(Instruction::Copy {
+                source: condition_destination,
+                destination: left_expression_result.clone(),
+            });
+            instructions.push(Instruction::JumpIfZero {
+                condition: left_expression_result,
+                target: else_label.clone(),
+            });
+            let (then_instructions, then_destination) = convert_expression(*middle_expression);
+            instructions.extend(then_instructions);
+            let middle_expression_result = make_temporary();
+            let middle_expression_result = Val::Var(middle_expression_result);
+            instructions.push(Instruction::Copy {
+                source: then_destination.clone(),
+                destination: middle_expression_result.clone(),
+            });
+            let final_result = make_temporary();
+            let final_result = Val::Var(final_result);
+            instructions.push(Instruction::Copy {
+                source: middle_expression_result,
+                destination: final_result.clone(),
+            });
+            instructions.push(Instruction::Jump {
+                target: end_label.clone(),
+            });
+            instructions.push(Instruction::Label {
+                identifier: else_label,
+            });
+            let (else_instructions, else_destination) = convert_expression(*right_expression);
+            instructions.extend(else_instructions);
+            let right_expression_result = make_temporary();
+            let right_expression_result = Val::Var(right_expression_result);
+            instructions.push(Instruction::Copy {
+                source: else_destination.clone(),
+                destination: right_expression_result.clone(),
+            });
+            instructions.push(Instruction::Copy {
+                source: right_expression_result,
+                destination: final_result.clone(),
+            });
+            instructions.push(Instruction::Label {
+                identifier: end_label,
+            });
+            (instructions, final_result)
         }
     }
 }
@@ -472,15 +521,15 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
                 let else_label: String = make_label("else");
 
                 let (mut instructions, condition_destination) = convert_expression(condition);
-                let right_expression_result = make_temporary();
-                let right_expression_result = Val::Var(right_expression_result);
+                let condition_expression_result = make_temporary();
+                let condition_expression_result = Val::Var(condition_expression_result);
                 instructions.push(Instruction::Copy {
                     source: condition_destination,
-                    destination: right_expression_result.clone(),
+                    destination: condition_expression_result.clone(),
                 });
 
                 instructions.push(Instruction::JumpIfZero {
-                    condition: right_expression_result,
+                    condition: condition_expression_result,
                     target: else_label.clone(),
                 });
 
