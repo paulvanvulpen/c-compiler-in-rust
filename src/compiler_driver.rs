@@ -43,7 +43,7 @@ fn emit_assembly(args: &Args, input_file_path: &Path) -> Result<()> {
 
 fn run_preprocessor(input: &Path) -> Result<()> {
     if input.extension().and_then(|e| e.to_str()) != Some("c") {
-        bail!("Expected a '.c' file, but got `{}`.", input.display());
+        bail!("Expected a '.c' file, but got `{}`.", input.display())
     }
 
     let out = input.with_extension("i");
