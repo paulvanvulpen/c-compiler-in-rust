@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use super::generator;
 use super::parser;
@@ -202,38 +203,62 @@ fn analysis_label_resolution(
     mut function_body: Vec<parser::BlockItem>,
 ) -> anyhow::Result<Vec<parser::BlockItem>> {
     let mut label_map: HashMap<String, String> = HashMap::new();
-    let mut goto_requests: Vec<String> = Vec::new();
+    let mut goto_requests: Vec<&mut parser::BlockItem> = Vec::new();
+    let mut visited: HashSet<String> = HashSet::new();
 
-    for block_item in &function_body {
-        if let parser::BlockItem::Statement(statement) = &block_item {
-            if let parser::Statement::Label(identifier) = statement {
-                if label_map.contains_key(identifier) {
-                    return Err(anyhow!("Duplicate label statement!"));
+    let mut is_last_item_label_statement = false;
+    for block_item in &mut function_body {
+        match block_item {
+            parser::BlockItem::Statement(statement) => {
+                if let parser::Statement::Label(identifier) = statement {
+                    if label_map.contains_key(identifier) {
+                        return Err(anyhow!("Duplicate label statement!"));
+                    }
+                    let unique_name = make_temporary_from_identifier(&identifier);
+                    label_map.insert(identifier.clone(), unique_name.clone());
+                    *block_item = parser::BlockItem::Statement(parser::Statement::Label(
+                        label_map[identifier].clone(),
+                    ));
+                    is_last_item_label_statement = true;
+                } else if let parser::Statement::Goto(identifier) = statement {
+                    visited.insert(identifier.clone());
+                    if label_map.contains_key(identifier) {
+                        *block_item = parser::BlockItem::Statement(parser::Statement::Goto(
+                            label_map[identifier].clone(),
+                        ));
+                    } else {
+                        goto_requests.push(block_item);
+                    }
+                } else {
+                    is_last_item_label_statement = false;
                 }
-                let unique_name = make_temporary_from_identifier(&identifier);
-                label_map.insert(identifier.clone(), unique_name.clone());
-                if let parser::BlockItem::Declaration(..) = &function_body[1] {
+            }
+            parser::BlockItem::Declaration(..) => {
+                if is_last_item_label_statement {
                     return Err(anyhow!(
                         "In C17, a label must precede a statement, not a declaration"
                     ));
                 }
-            } else if let parser::Statement::Goto(identifier) = statement {
-                if !label_map.contains_key(identifier) {
-                    goto_requests.push(identifier.clone());
-                }
+                is_last_item_label_statement = false;
             }
         }
     }
 
-    // I would like to get a reference of the goto statement that cannot yet be resolved
-    // and then update the value on the reference when it can be resolved.
-    // Ok(parser::Expression::Var {
-    //                     identifier: variable_map[&identifier].clone(),
-    //                 })
     for request in goto_requests {
-        if !label_map.contains_key(&request) {
-            return Err(anyhow!("undeclared label {:?}", &request));
+        if let parser::BlockItem::Statement(parser::Statement::Goto(identifier)) = request {
+            if label_map.contains_key(identifier) {
+                visited.insert(identifier.clone());
+                *request = parser::BlockItem::Statement(parser::Statement::Goto(
+                    label_map[identifier].clone(),
+                ));
+            } else {
+                return Err(anyhow!("undeclared label {:?}", identifier));
+            }
         }
+    }
+
+    if visited.len() != label_map.len() {
+        return Err(anyhow!("found a label that was never visited"));
     }
 
     Ok(function_body)

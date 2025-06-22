@@ -578,7 +578,6 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
             vec![Instruction::Jump { target }]
         }
         parser::Statement::Label(identifier) => {
-            let identifier = make_label(&identifier);
             vec![Instruction::Label { identifier }]
         }
         parser::Statement::Null => {
