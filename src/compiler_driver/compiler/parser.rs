@@ -7,7 +7,7 @@ mod visualize;
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program(function_definition)
 // function_definition = Function(identifier name, block_item* body)
-// statement = Return(exp) | If(exp condition, statement then, statement? else | Expression(exp) | Null
+// statement = Return(exp) | If(exp condition, statement then, statement? else | Expression(exp) | Goto(identifier name) | Label(identifier name) | Null
 // declaration = Declaration(identifier name, exp? init)
 // block_item = S(statement) | D(declaration)
 // exp = Constant(int) | Var(identifier) | Unary(unary_operator, exp) | Binary(binary_operator, exp, exp) | Assignment(exp, exp)
@@ -63,6 +63,8 @@ pub enum Statement {
         then_statement: Box<Statement>,
         optional_else_statement: Option<Box<Statement>>,
     },
+    Goto(String),
+    Label(String),
     #[default]
     Null,
 }
@@ -251,9 +253,9 @@ fn parse_declaration(lexer_tokens: &[Token]) -> Result<(Declaration, &[Token])> 
     }
 }
 
-// <statement> ::= "return" <exp> ";" | <exp> ";" | "if" "(" <exp> ")" <statement> [ "else" <statement> ] |";"
+// <statement> ::= "return" <exp> ";" | <exp> ";" | "if" "(" <exp> ")" <statement> [ "else" <statement> ] | "goto" identifier ";" | identifier ":" |";"
 fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
-    match lexer_tokens[0] {
+    match &lexer_tokens[0] {
         Token::Return => {
             let lexer_tokens = &lexer_tokens[1..];
             let (expression, lexer_tokens) =
@@ -295,14 +297,27 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                 )),
             }
         }
-        Token::Semicolon => Ok((Statement::Null, &lexer_tokens[1..])),
-        _ => {
-            let (expression, lexer_tokens) =
-                parse_expression(lexer_tokens, 0).context("Parsing an expression statement")?;
-            let lexer_tokens = expect(Token::Semicolon, lexer_tokens)
-                .context("Parsing an expression statement")?;
-            Ok((Statement::Expression(expression), &lexer_tokens))
+        Token::Goto => {
+            let lexer_tokens = &lexer_tokens[1..];
+            let (identifier, lexer_tokens) =
+                parse_identifier(lexer_tokens).context("Parsing a goto statement")?;
+            let lexer_tokens =
+                expect(Token::Semicolon, lexer_tokens).context("Parsing a goto statement")?;
+            Ok((Statement::Goto(identifier), &lexer_tokens))
         }
+        Token::Semicolon => Ok((Statement::Null, &lexer_tokens[1..])),
+        _ => match &lexer_tokens[0..2] {
+            [Token::Identifier(identifier), Token::Colon] => {
+                Ok((Statement::Label(identifier.clone()), &lexer_tokens[2..]))
+            }
+            _ => {
+                let (expression, lexer_tokens) =
+                    parse_expression(lexer_tokens, 0).context("Parsing an expression statement")?;
+                let lexer_tokens = expect(Token::Semicolon, lexer_tokens)
+                    .context("Parsing an expression statement")?;
+                Ok((Statement::Expression(expression), &lexer_tokens))
+            }
+        },
     }
 }
 
@@ -354,7 +369,8 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         | Token::Exclamation
         | Token::DoubleHyphen
         | Token::DoublePlus
-        | Token::Colon => None,
+        | Token::Colon
+        | Token::Goto => None,
     }
 }
 
@@ -406,7 +422,8 @@ fn parse_postfix_operator(lexer_tokens: &[Token]) -> Option<UnaryOperator> {
         | Token::DoubleOpenAngleBracketEqual
         | Token::DoubleCloseAngleBracketEqual
         | Token::QuestionMark
-        | Token::Colon => None,
+        | Token::Colon
+        | Token::Goto => None,
     }
 }
 

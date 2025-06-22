@@ -57,7 +57,9 @@ fn resolve_statement(
         parser::Statement::Expression(expression) => Ok(parser::Statement::Expression(
             resolve_expression(expression, variable_map)?,
         )),
-        parser::Statement::Null => Ok(statement),
+        parser::Statement::Label(_) | parser::Statement::Goto(_) | parser::Statement::Null => {
+            Ok(statement)
+        }
     }
 }
 
@@ -164,7 +166,7 @@ fn resolve_expression(
     }
 }
 
-fn analyse_block_item(
+fn resolve_block_item(
     block_item: parser::BlockItem,
     variable_map: &mut HashMap<String, String>,
 ) -> anyhow::Result<parser::BlockItem> {
@@ -182,24 +184,80 @@ fn analyse_block_item(
     }
 }
 
+fn analysis_variable_resolution(
+    function_name: &str,
+    mut function_body: Vec<parser::BlockItem>,
+) -> anyhow::Result<Vec<parser::BlockItem>> {
+    let mut variable_map: HashMap<String, String> = HashMap::new();
+
+    for block_item in &mut function_body {
+        let original = std::mem::take(block_item);
+        *block_item = resolve_block_item(original, &mut variable_map)
+            .with_context(|| format!("analysing block in function: {}", function_name))?;
+    }
+    Ok(function_body)
+}
+
+fn analysis_label_resolution(
+    mut function_body: Vec<parser::BlockItem>,
+) -> anyhow::Result<Vec<parser::BlockItem>> {
+    let mut label_map: HashMap<String, String> = HashMap::new();
+    let mut goto_requests: Vec<String> = Vec::new();
+
+    for block_item in &function_body {
+        if let parser::BlockItem::Statement(statement) = &block_item {
+            if let parser::Statement::Label(identifier) = statement {
+                if label_map.contains_key(identifier) {
+                    return Err(anyhow!("Duplicate label statement!"));
+                }
+                let unique_name = make_temporary_from_identifier(&identifier);
+                label_map.insert(identifier.clone(), unique_name.clone());
+                if let parser::BlockItem::Declaration(..) = &function_body[1] {
+                    return Err(anyhow!(
+                        "In C17, a label must precede a statement, not a declaration"
+                    ));
+                }
+            } else if let parser::Statement::Goto(identifier) = statement {
+                if !label_map.contains_key(identifier) {
+                    goto_requests.push(identifier.clone());
+                }
+            }
+        }
+    }
+
+    // I would like to get a reference of the goto statement that cannot yet be resolved
+    // and then update the value on the reference when it can be resolved.
+    // Ok(parser::Expression::Var {
+    //                     identifier: variable_map[&identifier].clone(),
+    //                 })
+    for request in goto_requests {
+        if !label_map.contains_key(&request) {
+            return Err(anyhow!("undeclared label {:?}", &request));
+        }
+    }
+
+    Ok(function_body)
+}
+
 pub fn run_semantic_analysis(
     parser_ast: parser::AbstractSyntaxTree,
 ) -> anyhow::Result<parser::AbstractSyntaxTree> {
     let parser::AbstractSyntaxTree::Program(parser::Program::Program(
         parser::FunctionDefinition::Function {
             identifier,
-            mut body,
+            body: function_body,
         },
     )) = parser_ast;
 
-    let mut variable_map: HashMap<String, String> = HashMap::new();
-
-    for block_item in &mut body {
-        let original = std::mem::take(block_item);
-        *block_item = analyse_block_item(original, &mut variable_map)?;
-    }
+    let function_body = analysis_variable_resolution(&identifier, function_body)
+        .with_context(|| format!("running semantic analysis in function: {}", identifier))?;
+    let function_body = analysis_label_resolution(function_body)
+        .with_context(|| format!("running semantic analysis in function: {}", identifier))?;
 
     Ok(parser::AbstractSyntaxTree::Program(
-        parser::Program::Program(parser::FunctionDefinition::Function { body, identifier }),
+        parser::Program::Program(parser::FunctionDefinition::Function {
+            body: function_body,
+            identifier,
+        }),
     ))
 }

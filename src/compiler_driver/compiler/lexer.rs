@@ -23,6 +23,7 @@ pub enum Token {
     Hyphen,
     DoubleHyphen,
     DoublePlus,
+    Goto,
     Plus,
     Asterisk,
     ForwardSlash,
@@ -92,6 +93,7 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
             "return" => (Some(Token::Return), remainder),
             "if" => (Some(Token::If), remainder),
             "else" => (Some(Token::Else), remainder),
+            "goto" => (Some(Token::Goto), remainder),
             _ => (Some(Token::Identifier(String::from(token_str))), remainder),
         };
     }

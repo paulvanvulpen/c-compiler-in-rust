@@ -107,6 +107,8 @@ impl visualize::Visualizer for parser::Statement {
                     (*then_statement).visualize(depth + 1)
                 ),
             },
+            parser::Statement::Goto(identifier) => format!("goto {identifier}"),
+            parser::Statement::Label(identifier) => format!("{identifier}:"),
             parser::Statement::Null => format!("{prefix};"),
         }
     }
