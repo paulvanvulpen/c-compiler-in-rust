@@ -27,10 +27,11 @@ pub enum Program {
 
 // <function>
 pub enum FunctionDefinition {
-    Function {
-        identifier: String,
-        body: Vec<BlockItem>,
-    },
+    Function { identifier: String, body: Block },
+}
+
+pub enum Block {
+    Block(Vec<BlockItem>),
 }
 
 // <block-item>
@@ -197,7 +198,10 @@ fn parse_function(lexer_tokens: &[Token]) -> Result<FunctionDefinition> {
     }
     let lexer_tokens = &lexer_tokens[1..];
     match lexer_tokens {
-        t if t.is_empty() => Ok(FunctionDefinition::Function { identifier, body }),
+        t if t.is_empty() => Ok(FunctionDefinition::Function {
+            identifier,
+            body: Block::Block(body),
+        }),
         _ => Err(fail()),
     }
 }

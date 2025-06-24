@@ -15,6 +15,7 @@ pub fn run_semantic_analysis(
         },
     )) = parser_ast;
 
+    let parser::Block::Block(function_body) = function_body;
     let function_body = variable_resolution::analyse(&identifier, function_body)
         .with_context(|| format!("running semantic analysis in function: {}", identifier))?;
     let function_body = label_resolution::analyse(function_body)
@@ -22,7 +23,7 @@ pub fn run_semantic_analysis(
 
     Ok(parser::AbstractSyntaxTree::Program(
         parser::Program::Program(parser::FunctionDefinition::Function {
-            body: function_body,
+            body: parser::Block::Block(function_body),
             identifier,
         }),
     ))

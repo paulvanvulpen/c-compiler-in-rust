@@ -20,22 +20,30 @@ impl visualize::Visualizer for parser::AbstractSyntaxTree {
     }
 }
 
+impl visualize::Visualizer for parser::Block {
+    fn visualize(&self, depth: u8) -> String {
+        let parser::Block::Block(body) = self;
+        format!(
+            "{{{}}}",
+            body.iter()
+                .map(|block_item| block_item.visualize(depth + 1))
+                .collect::<Vec<String>>()
+                .join(format!("\n").as_str())
+        )
+    }
+}
+
 impl visualize::Visualizer for parser::FunctionDefinition {
     fn visualize(&self, depth: u8) -> String {
         let parser::FunctionDefinition::Function { identifier, body } = self;
         let indent = "    ";
         let prefix = indent.repeat(depth as usize);
-        let body_str = body
-            .iter()
-            .map(|block_item| block_item.visualize(depth + 1))
-            .collect::<Vec<String>>()
-            .join(format!("\n").as_str());
 
         format!(
             "{prefix}Function(name={identifier}, body=\n\
             {}\n\
             {prefix})",
-            body_str
+            body.visualize(depth)
         )
     }
 }

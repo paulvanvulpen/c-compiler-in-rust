@@ -590,10 +590,8 @@ fn convert_function_definition(
     function_definition: parser::FunctionDefinition,
 ) -> FunctionDefinition {
     match function_definition {
-        parser::FunctionDefinition::Function {
-            identifier,
-            mut body,
-        } => {
+        parser::FunctionDefinition::Function { identifier, body } => {
+            let parser::Block::Block(mut body) = body;
             let mut tacky_body: Vec<Instruction> = vec![];
             for block_item in &mut body {
                 match block_item {
@@ -601,9 +599,10 @@ fn convert_function_definition(
                         let parser::Declaration::Declaration { identifier, init } = declaration;
                         if let Some(unpacked_init) = init {
                             let unpacked_init = std::mem::take(unpacked_init);
-                            let identifier = std::mem::take(identifier);
                             let assignment_expression = parser::Expression::Assignment(
-                                Box::new(parser::Expression::Var { identifier }),
+                                Box::new(parser::Expression::Var {
+                                    identifier: identifier.clone(),
+                                }),
                                 Box::new(unpacked_init),
                             );
                             let (instructions, ..) = convert_expression(assignment_expression);
