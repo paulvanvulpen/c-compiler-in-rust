@@ -570,6 +570,7 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
                 instructions
             }
         },
+        parser::Statement::Compound(..) => todo!(),
         parser::Statement::Expression(expression) => {
             let (instructions, ..) = convert_expression(expression);
             instructions

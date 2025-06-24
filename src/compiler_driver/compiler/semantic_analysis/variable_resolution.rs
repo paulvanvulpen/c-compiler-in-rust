@@ -49,6 +49,7 @@ fn resolve_statement(
                 None
             },
         }),
+        parser::Statement::Compound(..) => todo!(),
         parser::Statement::Expression(expression) => Ok(parser::Statement::Expression(
             resolve_expression(expression, variable_map)?,
         )),

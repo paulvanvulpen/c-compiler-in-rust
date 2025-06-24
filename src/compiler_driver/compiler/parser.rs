@@ -66,6 +66,7 @@ pub enum Statement {
     },
     Goto(String),
     Label(String),
+    Compound(Block),
     #[default]
     Null,
 }
@@ -177,7 +178,7 @@ fn parse_program(lexer_tokens: &[Token]) -> Result<Program> {
     }
 }
 
-// <function> ::= "int" <identifier> "(" "void" ")" "{" { <block-item> } "}"
+// <function> ::= "int" <identifier> "(" "void" ")" <block>
 fn parse_function(lexer_tokens: &[Token]) -> Result<FunctionDefinition> {
     let lexer_tokens = expect(Token::Int, lexer_tokens).context("Parsing a function")?;
     let (identifier, lexer_tokens) =
@@ -187,21 +188,10 @@ fn parse_function(lexer_tokens: &[Token]) -> Result<FunctionDefinition> {
     let lexer_tokens = expect(Token::Void, lexer_tokens).context("Parsing a function")?;
     let lexer_tokens =
         expect(Token::CloseParenthesis, lexer_tokens).context("Parsing a function")?;
-    let mut lexer_tokens = expect(Token::OpenBrace, lexer_tokens).context("Parsing a function")?;
+    let (body, lexer_tokens) = parse_block(lexer_tokens).context("Parsing a function")?;
 
-    let mut body = vec![];
-    while !matches!(&lexer_tokens[0], Token::CloseBrace) {
-        let (block_item, updated_lexer_tokens) =
-            parse_block_item(lexer_tokens).context("Parsing a function")?;
-        lexer_tokens = updated_lexer_tokens;
-        body.push(block_item);
-    }
-    let lexer_tokens = &lexer_tokens[1..];
     match lexer_tokens {
-        t if t.is_empty() => Ok(FunctionDefinition::Function {
-            identifier,
-            body: Block::Block(body),
-        }),
+        t if t.is_empty() => Ok(FunctionDefinition::Function { identifier, body }),
         _ => Err(fail()),
     }
 }
@@ -212,6 +202,21 @@ fn parse_identifier(lexer_tokens: &[Token]) -> Result<(String, &[Token])> {
         Token::Identifier(identifier) => Ok((identifier.clone(), &lexer_tokens[1..])),
         _ => Err(fail()),
     }
+}
+
+// <block> ::= "{" { <block_item> } "}"
+fn parse_block(lexer_tokens: &[Token]) -> Result<(Block, &[Token])> {
+    let mut lexer_tokens = expect(Token::OpenBrace, lexer_tokens)?;
+    let mut block = vec![];
+
+    while !matches!(&lexer_tokens[0], Token::CloseBrace) {
+        let block_item;
+        (block_item, lexer_tokens) =
+            parse_block_item(&lexer_tokens).context("Parsing a compound statement")?;
+        block.push(block_item);
+    }
+
+    Ok((Block::Block(block), &lexer_tokens[1..]))
 }
 
 // <block-item> ::= <statement> | <declaration>
@@ -257,7 +262,7 @@ fn parse_declaration(lexer_tokens: &[Token]) -> Result<(Declaration, &[Token])> 
     }
 }
 
-// <statement> ::= "return" <exp> ";" | <exp> ";" | "if" "(" <exp> ")" <statement> [ "else" <statement> ] | "goto" identifier ";" | identifier ":" |";"
+// <statement> ::= "return" <exp> ";" | <exp> ";" | "if" "(" <exp> ")" <statement> [ "else" <statement> ] | "goto" identifier ";" | identifier ":" | <block> |";"
 fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
     match &lexer_tokens[0] {
         Token::Return => {
@@ -310,6 +315,11 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
             Ok((Statement::Goto(identifier), &lexer_tokens))
         }
         Token::Semicolon => Ok((Statement::Null, &lexer_tokens[1..])),
+        Token::OpenBrace => {
+            let (block, lexer_tokens) =
+                parse_block(lexer_tokens).context("Parsing a compound statement")?;
+            Ok((Statement::Compound(block), &lexer_tokens))
+        }
         _ => match &lexer_tokens[0..2] {
             [Token::Identifier(identifier), Token::Colon] => {
                 Ok((Statement::Label(identifier.clone()), &lexer_tokens[2..]))

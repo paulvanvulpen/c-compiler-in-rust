@@ -27,6 +27,7 @@ fn update_label_map(
             }
             Ok(())
         }
+        parser::Statement::Compound(..) => todo!(),
         parser::Statement::Expression(..)
         | parser::Statement::Return(..)
         | parser::Statement::Goto(..)
@@ -65,6 +66,7 @@ fn resolve_statement(
                 None
             },
         }),
+        parser::Statement::Compound(..) => todo!(),
         parser::Statement::Expression(..)
         | parser::Statement::Return(..)
         | parser::Statement::Null => Ok(statement),
