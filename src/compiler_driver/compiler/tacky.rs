@@ -570,7 +570,7 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
                 instructions
             }
         },
-        parser::Statement::Compound(..) => todo!(),
+        parser::Statement::Compound(block) => convert_block(block),
         parser::Statement::Expression(expression) => {
             let (instructions, ..) = convert_expression(expression);
             instructions
@@ -587,36 +587,41 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
     }
 }
 
+fn convert_block(block: parser::Block) -> Vec<Instruction> {
+    let parser::Block::Block(body) = block;
+    let mut tacky_instructions: Vec<Instruction> = vec![];
+    for block_item in body {
+        match block_item {
+            parser::BlockItem::Declaration(declaration) => {
+                let parser::Declaration::Declaration { identifier, init } = declaration;
+                if let Some(unpacked_init) = init {
+                    let assignment_expression = parser::Expression::Assignment(
+                        Box::new(parser::Expression::Var {
+                            identifier: identifier.clone(),
+                        }),
+                        Box::new(unpacked_init),
+                    );
+                    let (instructions, ..) = convert_expression(assignment_expression);
+                    tacky_instructions.extend(instructions);
+                }
+            }
+            parser::BlockItem::Statement(statement) => {
+                let instructions = convert_statement(statement);
+                tacky_instructions.extend(instructions);
+            }
+        }
+    }
+
+    tacky_instructions
+}
+
 fn convert_function_definition(
     function_definition: parser::FunctionDefinition,
 ) -> FunctionDefinition {
     match function_definition {
         parser::FunctionDefinition::Function { identifier, body } => {
-            let parser::Block::Block(mut body) = body;
             let mut tacky_body: Vec<Instruction> = vec![];
-            for block_item in &mut body {
-                match block_item {
-                    parser::BlockItem::Declaration(declaration) => {
-                        let parser::Declaration::Declaration { identifier, init } = declaration;
-                        if let Some(unpacked_init) = init {
-                            let unpacked_init = std::mem::take(unpacked_init);
-                            let assignment_expression = parser::Expression::Assignment(
-                                Box::new(parser::Expression::Var {
-                                    identifier: identifier.clone(),
-                                }),
-                                Box::new(unpacked_init),
-                            );
-                            let (instructions, ..) = convert_expression(assignment_expression);
-                            tacky_body.extend(instructions);
-                        }
-                    }
-                    parser::BlockItem::Statement(statement) => {
-                        let original = std::mem::take(statement);
-                        let instructions = convert_statement(original);
-                        tacky_body.extend(instructions);
-                    }
-                }
-            }
+            tacky_body.extend(convert_block(body));
 
             // expected behavior for main when not explicitly specified
             // and handles missing return statement. This line is bypassed when a return statement is already given
