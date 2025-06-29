@@ -7,14 +7,20 @@ use anyhow::{Context, anyhow};
 
 fn resolve_declaration(
     declaration: parser::Declaration,
-    variable_map: &mut HashMap<String, String>,
+    variable_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::Declaration> {
     let parser::Declaration::Declaration { identifier, init } = declaration;
-    if variable_map.contains_key(&identifier) {
+    if variable_map.contains_key(&identifier) && variable_map[&identifier].from_current_block {
         return Err(anyhow!("Duplicate variable declaration: {}!", &identifier));
     }
     let unique_name = generator::make_temporary_from_identifier(&identifier);
-    variable_map.insert(identifier.clone(), unique_name.clone());
+    variable_map.insert(
+        identifier.clone(),
+        NameAndScope {
+            unique_name: unique_name.clone(),
+            from_current_block: true,
+        },
+    );
 
     let mut updated_initialiser: Option<parser::Expression> = None;
     if let Some(init) = init {
@@ -29,7 +35,7 @@ fn resolve_declaration(
 
 fn resolve_statement(
     statement: parser::Statement,
-    variable_map: &mut HashMap<String, String>,
+    variable_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::Statement> {
     match statement {
         parser::Statement::Return(expression) => Ok(parser::Statement::Return(resolve_expression(
@@ -50,10 +56,10 @@ fn resolve_statement(
             },
         }),
         parser::Statement::Compound(block) => {
-            todo!("Copy variable map here");
+            let mut copy_of_variable_map: HashMap<String, NameAndScope> = variable_map.clone();
             Ok(parser::Statement::Compound(resolve_block(
                 block,
-                variable_map,
+                &mut copy_of_variable_map,
             )?))
         }
         parser::Statement::Expression(expression) => Ok(parser::Statement::Expression(
@@ -67,7 +73,7 @@ fn resolve_statement(
 
 fn resolve_expression(
     expression: parser::Expression,
-    variable_map: &mut HashMap<String, String>,
+    variable_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::Expression> {
     match expression {
         parser::Expression::Assignment(left, right) => {
@@ -82,7 +88,7 @@ fn resolve_expression(
         parser::Expression::Var { identifier } => {
             if variable_map.contains_key(&identifier) {
                 Ok(parser::Expression::Var {
-                    identifier: variable_map[&identifier].clone(),
+                    identifier: variable_map[&identifier].unique_name.clone(),
                 })
             } else {
                 Err(anyhow!("undeclared identifier {:?}", identifier))
@@ -170,7 +176,7 @@ fn resolve_expression(
 
 fn resolve_block_item(
     block_item: parser::BlockItem,
-    variable_map: &mut HashMap<String, String>,
+    variable_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::BlockItem> {
     match block_item {
         parser::BlockItem::Statement(statement) => {
@@ -188,7 +194,7 @@ fn resolve_block_item(
 
 fn resolve_block(
     block: parser::Block,
-    variable_map: &mut HashMap<String, String>,
+    variable_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::Block> {
     let parser::Block::Block(mut block) = block;
     for block_item in &mut block {
@@ -199,8 +205,23 @@ fn resolve_block(
     Ok(parser::Block::Block(block))
 }
 
+struct NameAndScope {
+    unique_name: String,
+    from_current_block: bool,
+}
+
+impl Clone for NameAndScope {
+    // Clone always assumes the use of a new scope.
+    fn clone(&self) -> Self {
+        NameAndScope {
+            unique_name: self.unique_name.clone(),
+            from_current_block: false,
+        }
+    }
+}
+
 pub fn analyse(function_name: &str, function_body: parser::Block) -> anyhow::Result<parser::Block> {
-    let mut variable_map: HashMap<String, String> = HashMap::new();
+    let mut variable_map: HashMap<String, NameAndScope> = HashMap::new();
 
     resolve_block(function_body, &mut variable_map)
         .with_context(|| format!("analysing function body of: {}", function_name))

@@ -3,6 +3,20 @@ use super::parser;
 use anyhow::{Context, anyhow};
 use std::collections::HashMap;
 
+fn update_label_map_in_block(
+    block: &parser::Block,
+    label_map: &mut HashMap<String, String>,
+) -> anyhow::Result<()> {
+    let parser::Block::Block(block) = block;
+    for block_item in block {
+        if let parser::BlockItem::Statement(statement) = block_item {
+            update_label_map(statement, label_map).context("updating label_map in block")?;
+        }
+    }
+
+    Ok(())
+}
+
 fn update_label_map(
     statement: &parser::Statement,
     label_map: &mut HashMap<String, String>,
@@ -27,7 +41,8 @@ fn update_label_map(
             }
             Ok(())
         }
-        parser::Statement::Compound(..) => todo!(),
+
+        parser::Statement::Compound(block) => update_label_map_in_block(block, label_map),
         parser::Statement::Expression(..)
         | parser::Statement::Return(..)
         | parser::Statement::Goto(..)
@@ -37,7 +52,7 @@ fn update_label_map(
 
 fn resolve_statement(
     statement: parser::Statement,
-    label_map: &HashMap<String, String>,
+    label_map: &mut HashMap<String, String>,
 ) -> anyhow::Result<parser::Statement> {
     match statement {
         parser::Statement::Goto(identifier) => {
@@ -66,7 +81,12 @@ fn resolve_statement(
                 None
             },
         }),
-        parser::Statement::Compound(..) => todo!(),
+        parser::Statement::Compound(block) => {
+            // let mut copy_of_variable_map: HashMap<String, String> = label_map.clone();
+            Ok(parser::Statement::Compound(resolve_block(
+                block, label_map,
+            )?))
+        }
         parser::Statement::Expression(..)
         | parser::Statement::Return(..)
         | parser::Statement::Null => Ok(statement),
@@ -79,18 +99,12 @@ fn resolve_block(
 ) -> anyhow::Result<parser::Block> {
     let parser::Block::Block(mut block) = block;
 
-    for block_item in &mut block {
-        if let parser::BlockItem::Statement(statement) = block_item {
-            update_label_map(statement, label_map)?;
-        }
-    }
-
     let mut is_last_item_label_statement = false;
     for block_item in &mut block {
         match block_item {
             parser::BlockItem::Statement(statement) => {
                 let original = std::mem::take(statement);
-                let resolved_statement = resolve_statement(original, &label_map)
+                let resolved_statement = resolve_statement(original, label_map)
                     .context("analysed statement block item")?;
                 is_last_item_label_statement =
                     matches!(resolved_statement, parser::Statement::Label(..));
@@ -114,10 +128,11 @@ fn resolve_block(
     Ok(parser::Block::Block(block))
 }
 
-// TODO: "when adding scopes, reevaluate this,
-//  inside nested ifs the condition that labels must be followed by a valid statement is not implicitly met"
 pub fn analyse(function_name: &str, function_body: parser::Block) -> anyhow::Result<parser::Block> {
     let mut label_map: HashMap<String, String> = HashMap::new();
+
+    update_label_map_in_block(&function_body, &mut label_map)
+        .with_context(|| format!("update label_map for function body of: {}", function_name))?;
 
     resolve_block(function_body, &mut label_map)
         .with_context(|| format!("analysing function body of: {}", function_name))
