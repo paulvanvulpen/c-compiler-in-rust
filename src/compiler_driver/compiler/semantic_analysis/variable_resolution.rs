@@ -49,7 +49,13 @@ fn resolve_statement(
                 None
             },
         }),
-        parser::Statement::Compound(..) => todo!(),
+        parser::Statement::Compound(block) => {
+            todo!("Copy variable map here");
+            Ok(parser::Statement::Compound(resolve_block(
+                block,
+                variable_map,
+            )?))
+        }
         parser::Statement::Expression(expression) => Ok(parser::Statement::Expression(
             resolve_expression(expression, variable_map)?,
         )),
@@ -180,16 +186,22 @@ fn resolve_block_item(
     }
 }
 
-pub fn analyse(
-    function_name: &str,
-    mut function_body: Vec<parser::BlockItem>,
-) -> anyhow::Result<Vec<parser::BlockItem>> {
+fn resolve_block(
+    block: parser::Block,
+    variable_map: &mut HashMap<String, String>,
+) -> anyhow::Result<parser::Block> {
+    let parser::Block::Block(mut block) = block;
+    for block_item in &mut block {
+        let original = std::mem::take(block_item);
+        *block_item = resolve_block_item(original, variable_map).context("resolving_block")?;
+    }
+
+    Ok(parser::Block::Block(block))
+}
+
+pub fn analyse(function_name: &str, function_body: parser::Block) -> anyhow::Result<parser::Block> {
     let mut variable_map: HashMap<String, String> = HashMap::new();
 
-    for block_item in &mut function_body {
-        let original = std::mem::take(block_item);
-        *block_item = resolve_block_item(original, &mut variable_map)
-            .with_context(|| format!("analysing block in function: {}", function_name))?;
-    }
-    Ok(function_body)
+    resolve_block(function_body, &mut variable_map)
+        .with_context(|| format!("analysing function body of: {}", function_name))
 }

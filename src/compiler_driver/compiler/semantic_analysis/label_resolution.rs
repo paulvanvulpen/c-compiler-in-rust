@@ -73,21 +73,20 @@ fn resolve_statement(
     }
 }
 
-// TODO: "when adding scopes, reevaluate this,
-//  inside nested ifs the condition that labels must be followed by a valid statement is not implicitly met"
-pub fn analyse(
-    mut function_body: Vec<parser::BlockItem>,
-) -> anyhow::Result<Vec<parser::BlockItem>> {
-    let mut label_map: HashMap<String, String> = HashMap::new();
+fn resolve_block(
+    block: parser::Block,
+    label_map: &mut HashMap<String, String>,
+) -> anyhow::Result<parser::Block> {
+    let parser::Block::Block(mut block) = block;
 
-    for block_item in &function_body {
+    for block_item in &mut block {
         if let parser::BlockItem::Statement(statement) = block_item {
-            update_label_map(statement, &mut label_map)?;
+            update_label_map(statement, label_map)?;
         }
     }
 
     let mut is_last_item_label_statement = false;
-    for block_item in &mut function_body {
+    for block_item in &mut block {
         match block_item {
             parser::BlockItem::Statement(statement) => {
                 let original = std::mem::take(statement);
@@ -112,6 +111,14 @@ pub fn analyse(
             "In C17, labels must be followed by a valid statement"
         ));
     }
+    Ok(parser::Block::Block(block))
+}
 
-    Ok(function_body)
+// TODO: "when adding scopes, reevaluate this,
+//  inside nested ifs the condition that labels must be followed by a valid statement is not implicitly met"
+pub fn analyse(function_name: &str, function_body: parser::Block) -> anyhow::Result<parser::Block> {
+    let mut label_map: HashMap<String, String> = HashMap::new();
+
+    resolve_block(function_body, &mut label_map)
+        .with_context(|| format!("analysing function body of: {}", function_name))
 }
