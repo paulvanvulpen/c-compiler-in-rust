@@ -41,12 +41,12 @@ fn update_label_map(
             }
             Ok(())
         }
-
         parser::Statement::Compound(block) => update_label_map_in_block(block, label_map),
         parser::Statement::Expression(..)
         | parser::Statement::Return(..)
         | parser::Statement::Goto(..)
         | parser::Statement::Null => Ok(()),
+        _ => todo!(),
     }
 }
 
@@ -90,6 +90,7 @@ fn resolve_statement(
         parser::Statement::Expression(..)
         | parser::Statement::Return(..)
         | parser::Statement::Null => Ok(statement),
+        _ => todo!(),
     }
 }
 

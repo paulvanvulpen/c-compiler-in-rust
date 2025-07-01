@@ -76,6 +76,17 @@ impl visualize::Visualizer for parser::Declaration {
         }
     }
 }
+impl visualize::Visualizer for parser::ForInit {
+    fn visualize(&self, depth: u8) -> String {
+        match self {
+            parser::ForInit::InitialOptionalExpression(expression) => match expression {
+                Some(expression) => expression.visualize(depth + 1),
+                None => String::from(""),
+            },
+            parser::ForInit::InitialDeclaration(declaration) => declaration.visualize(depth + 1),
+        }
+    }
+}
 
 impl visualize::Visualizer for parser::Statement {
     fn visualize(&self, depth: u8) -> String {
@@ -116,6 +127,66 @@ impl visualize::Visualizer for parser::Statement {
                 ),
             },
             parser::Statement::Goto(identifier) => format!("goto {identifier}"),
+            parser::Statement::Break { label } => {
+                format!("break {}", label.as_deref().unwrap_or_else(|| "undefined"))
+            }
+            parser::Statement::Continue { label } => {
+                format!(
+                    "continue {}",
+                    label.as_deref().unwrap_or_else(|| "undefined")
+                )
+            }
+            parser::Statement::While {
+                condition,
+                body,
+                label,
+            } => format!(
+                "{}: While(\n\
+                        {prefix}{indent}condition={}\n\
+                        {prefix}{indent}body={}\n\
+                        {prefix})",
+                label.as_deref().unwrap_or_else(|| "undefined"),
+                condition.visualize(depth + 1),
+                body.visualize(depth + 1),
+            ),
+            parser::Statement::DoWhile {
+                body,
+                condition,
+                label,
+            } => format!(
+                "{}: While(\n\
+                        {prefix}{indent}body={}\n\
+                        {prefix}{indent}condition={}\n\
+                        {prefix})",
+                label.as_deref().unwrap_or_else(|| "undefined"),
+                body.visualize(depth + 1),
+                condition.visualize(depth + 1),
+            ),
+            parser::Statement::For {
+                init,
+                condition,
+                post,
+                body,
+                label,
+            } => format!(
+                "{}: For(\n\
+                        {prefix}{indent}init={}\n\
+                        {prefix}{indent}condition={}\n\
+                        {prefix}{indent}post={}\n\
+                        {prefix}{indent}body={}\n\
+                        {prefix})",
+                label.as_deref().unwrap_or_else(|| "undefined"),
+                init.visualize(depth + 1),
+                match condition {
+                    Some(condition) => condition.visualize(depth + 1),
+                    None => String::from(""),
+                },
+                match post {
+                    Some(post) => post.visualize(depth + 1),
+                    None => String::from(""),
+                },
+                body.visualize(depth + 1),
+            ),
             parser::Statement::Label(identifier) => format!("{identifier}:"),
             parser::Statement::Compound(block) => block.visualize(depth),
             parser::Statement::Null => format!("{prefix};"),

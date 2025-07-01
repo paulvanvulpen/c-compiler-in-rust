@@ -584,6 +584,7 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
         parser::Statement::Null => {
             vec![]
         }
+        _ => todo!(),
     }
 }
 

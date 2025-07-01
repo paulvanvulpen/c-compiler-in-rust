@@ -68,6 +68,7 @@ fn resolve_statement(
         parser::Statement::Label(_) | parser::Statement::Goto(_) | parser::Statement::Null => {
             Ok(statement)
         }
+        _ => todo!(),
     }
 }
 

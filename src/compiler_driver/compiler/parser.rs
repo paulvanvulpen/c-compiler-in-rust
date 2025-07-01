@@ -7,8 +7,20 @@ mod visualize;
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program(function_definition)
 // function_definition = Function(identifier name, block_item* body)
-// statement = Return(exp) | If(exp condition, statement then, statement? else | Expression(exp) | Goto(identifier name) | Label(identifier name) | Null
+// statement = Return(exp)
+//              | If(exp condition, statement then, statement? else)
+//              | Expression(exp)
+//              | Compound(block)
+//              | Break
+//              | Continue
+//              | While(exp condition, statement body)
+//              | DoWhile(statement body, exp condition)
+//              | For(for_init init, exp? condition, exp? post, statement body)
+//              | Goto(identifier name)
+//              | Label(identifier name)
+//              | Null
 // declaration = Declaration(identifier name, exp? init)
+// for_init = InitDecl(declaration), InitExp(exp?)
 // block_item = S(statement) | D(declaration)
 // exp = Constant(int) | Var(identifier) | Unary(unary_operator, exp) | Binary(binary_operator, exp, exp) | Assignment(exp, exp)
 // unary_operator = Complement | Negate | Not | PrefixDecrement | PostfixDecrement | PrefixIncrement | PostfixIncrement
@@ -67,8 +79,37 @@ pub enum Statement {
     Goto(String),
     Label(String),
     Compound(Block),
+    Break {
+        label: Option<String>,
+    },
+    Continue {
+        label: Option<String>,
+    },
+    While {
+        condition: Expression,
+        body: Box<Statement>,
+        label: Option<String>,
+    },
+    DoWhile {
+        body: Box<Statement>,
+        condition: Expression,
+        label: Option<String>,
+    },
+    For {
+        init: ForInit,
+        condition: Option<Expression>,
+        post: Option<Expression>,
+        body: Box<Statement>,
+        label: Option<String>,
+    },
     #[default]
     Null,
+}
+
+// <for-init>
+pub enum ForInit {
+    InitialDeclaration(Declaration),
+    InitialOptionalExpression(Option<Expression>),
 }
 
 // <exp>
@@ -262,7 +303,18 @@ fn parse_declaration(lexer_tokens: &[Token]) -> Result<(Declaration, &[Token])> 
     }
 }
 
-// <statement> ::= "return" <exp> ";" | <exp> ";" | "if" "(" <exp> ")" <statement> [ "else" <statement> ] | "goto" identifier ";" | identifier ":" | <block> |";"
+// <statement> ::= "return" <exp> ";"
+//      | <exp> ";"
+//      | "if" "(" <exp> ")" <statement> [ "else" <statement> ]
+//      | "goto" identifier ";"
+//      | identifier ":"
+//      | <block>
+//      | "break" ";"
+//      | "continue" ";"
+//      | "while" "(" <exp> ")" <statement>
+//      | "do <statement> "while" "(" <exp> ")" ";"
+//      | "for" "(" <for-init> [ <exp> ] ";" [ <exp> ] ")" <statement>
+//      | ";"
 fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
     match &lexer_tokens[0] {
         Token::Return => {
@@ -320,6 +372,100 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                 parse_block(lexer_tokens).context("Parsing a compound statement")?;
             Ok((Statement::Compound(block), &lexer_tokens))
         }
+        Token::Break => {
+            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens =
+                expect(Token::Semicolon, lexer_tokens).context("Parsing a break statement")?;
+            Ok((Statement::Break { label: None }, &lexer_tokens))
+        }
+        Token::Continue => {
+            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens =
+                expect(Token::Semicolon, lexer_tokens).context("Parsing a continue statement")?;
+            Ok((Statement::Continue { label: None }, &lexer_tokens))
+        }
+        Token::While => {
+            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)
+                .context("Parsing a while statement")?;
+            let (condition, lexer_tokens) =
+                parse_expression(lexer_tokens, 0).context("Parsing a while statement")?;
+            let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
+                .context("Parsing a while statement")?;
+            let (body, lexer_tokens) =
+                parse_statement(lexer_tokens).context("Parsing a while statement")?;
+            Ok((
+                Statement::While {
+                    condition,
+                    body: Box::new(body),
+                    label: None,
+                },
+                &lexer_tokens,
+            ))
+        }
+        Token::Do => {
+            let lexer_tokens = &lexer_tokens[1..];
+            let (body, lexer_tokens) =
+                parse_statement(lexer_tokens).context("Parsing a do-while statement")?;
+            let lexer_tokens =
+                expect(Token::While, lexer_tokens).context("Parsing a do-while statement")?;
+            let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)
+                .context("Parsing a do-while statement")?;
+            let (condition, lexer_tokens) =
+                parse_expression(lexer_tokens, 0).context("Parsing a do-while statement")?;
+            let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
+                .context("Parsing a do-while statement")?;
+            let lexer_tokens =
+                expect(Token::Semicolon, lexer_tokens).context("Parsing a do-while statement")?;
+            Ok((
+                Statement::DoWhile {
+                    body: Box::new(body),
+                    condition,
+                    label: None,
+                },
+                &lexer_tokens,
+            ))
+        }
+        // | "for" "(" <for-init> [ <exp> ] ";" [ <exp> ] ")" <statement>
+        Token::For => {
+            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens =
+                expect(Token::OpenParenthesis, lexer_tokens).context("Parsing a for statement")?;
+            let (init, lexer_tokens) =
+                parse_for_init(lexer_tokens).context("Parsing a for statement")?;
+            let (condition, lexer_tokens) = match &lexer_tokens[0] {
+                Token::Semicolon => (None, &lexer_tokens[1..]),
+                _ => {
+                    let (expression, lexer_tokens) =
+                        parse_expression(lexer_tokens, 0).context("Parsing a for statement")?;
+                    let lexer_tokens = expect(Token::Semicolon, lexer_tokens)
+                        .context("Parsing a for statement")?;
+                    (Some(expression), lexer_tokens)
+                }
+            };
+            let (post, lexer_tokens) = match &lexer_tokens[0] {
+                Token::CloseParenthesis => (None, &lexer_tokens[1..]),
+                _ => {
+                    let (expression, lexer_tokens) =
+                        parse_expression(lexer_tokens, 0).context("Parsing a for statement")?;
+                    let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
+                        .context("Parsing a for statement")?;
+                    (Some(expression), lexer_tokens)
+                }
+            };
+            let (body, lexer_tokens) =
+                parse_statement(lexer_tokens).context("Parsing a for statement")?;
+            Ok((
+                Statement::For {
+                    init,
+                    condition,
+                    post,
+                    body: Box::new(body),
+                    label: None,
+                },
+                &lexer_tokens,
+            ))
+        }
         _ => match &lexer_tokens[0..2] {
             [Token::Identifier(identifier), Token::Colon] => {
                 Ok((Statement::Label(identifier.clone()), &lexer_tokens[2..]))
@@ -332,6 +478,28 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                 Ok((Statement::Expression(expression), &lexer_tokens))
             }
         },
+    }
+}
+
+// <for-init> ::= <declaration> | [ <exp> ] ";"
+fn parse_for_init(lexer_tokens: &[Token]) -> Result<(ForInit, &[Token])> {
+    match &lexer_tokens[0] {
+        Token::Int => {
+            let (declaration, lexer_tokens) =
+                parse_declaration(lexer_tokens).context("Parsing a for_init statement")?;
+            Ok((ForInit::InitialDeclaration(declaration), lexer_tokens))
+        }
+        Token::Semicolon => Ok((ForInit::InitialOptionalExpression(None), &lexer_tokens[1..])),
+        _ => {
+            let (expression, lexer_tokens) =
+                parse_expression(lexer_tokens, 0).context("Parsing a for_init statement")?;
+            let lexer_tokens =
+                expect(Token::Semicolon, lexer_tokens).context("Parsing a for_init statement")?;
+            Ok((
+                ForInit::InitialOptionalExpression(Some(expression)),
+                lexer_tokens,
+            ))
+        }
     }
 }
 
@@ -384,7 +552,12 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         | Token::DoubleHyphen
         | Token::DoublePlus
         | Token::Colon
-        | Token::Goto => None,
+        | Token::Goto
+        | Token::Break
+        | Token::Continue
+        | Token::Do
+        | Token::While
+        | Token::For => None,
     }
 }
 
@@ -437,7 +610,12 @@ fn parse_postfix_operator(lexer_tokens: &[Token]) -> Option<UnaryOperator> {
         | Token::DoubleCloseAngleBracketEqual
         | Token::QuestionMark
         | Token::Colon
-        | Token::Goto => None,
+        | Token::Goto
+        | Token::Break
+        | Token::Continue
+        | Token::Do
+        | Token::While
+        | Token::For => None,
     }
 }
 
