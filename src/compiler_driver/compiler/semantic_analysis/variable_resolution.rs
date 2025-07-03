@@ -33,6 +33,25 @@ fn resolve_declaration(
     })
 }
 
+fn resolve_for_init(
+    for_init: parser::ForInit,
+    variable_map: &mut HashMap<String, NameAndScope>,
+) -> anyhow::Result<parser::ForInit> {
+    match for_init {
+        parser::ForInit::InitialDeclaration(declaration) => Ok(
+            parser::ForInit::InitialDeclaration(resolve_declaration(declaration, variable_map)?),
+        ),
+        parser::ForInit::InitialOptionalExpression(optional_expression) => {
+            match optional_expression {
+                Some(expression) => Ok(parser::ForInit::InitialOptionalExpression(Some(
+                    resolve_expression(expression, variable_map)?,
+                ))),
+                None => Ok(parser::ForInit::InitialOptionalExpression(None)),
+            }
+        }
+    }
+}
+
 fn resolve_statement(
     statement: parser::Statement,
     variable_map: &mut HashMap<String, NameAndScope>,
@@ -62,13 +81,73 @@ fn resolve_statement(
                 &mut copy_of_variable_map,
             )?))
         }
+        parser::Statement::While {
+            condition,
+            body,
+            label,
+        } => {
+            let condition = resolve_expression(condition, variable_map)
+                .context("resolving a while statement")?;
+            let body =
+                resolve_statement(*body, variable_map).context("resolving a while statement")?;
+            Ok(parser::Statement::While {
+                condition,
+                body: Box::new(body),
+                label,
+            })
+        }
+        parser::Statement::DoWhile {
+            body,
+            condition,
+            label,
+        } => {
+            let body =
+                resolve_statement(*body, variable_map).context("resolving a while statement")?;
+            let condition = resolve_expression(condition, variable_map)
+                .context("resolving a while statement")?;
+            Ok(parser::Statement::DoWhile {
+                body: Box::new(body),
+                condition,
+                label,
+            })
+        }
+        parser::Statement::For {
+            init,
+            condition,
+            post,
+            body,
+            label,
+        } => {
+            let mut copy_of_variable_map: HashMap<String, NameAndScope> = variable_map.clone();
+            let init = resolve_for_init(init, &mut copy_of_variable_map)
+                .context("resolving a for statement")?;
+            let condition = condition
+                .map(|c| resolve_expression(c, &mut copy_of_variable_map))
+                .transpose()
+                .context("resolving a for statement")?;
+            let post = post
+                .map(|c| resolve_expression(c, &mut copy_of_variable_map))
+                .transpose()
+                .context("resolving a for statement")?;
+            let body = resolve_statement(*body, &mut copy_of_variable_map)
+                .context("resolving a while statement")?;
+
+            Ok(parser::Statement::For {
+                init,
+                condition,
+                post,
+                body: Box::new(body),
+                label,
+            })
+        }
         parser::Statement::Expression(expression) => Ok(parser::Statement::Expression(
             resolve_expression(expression, variable_map)?,
         )),
-        parser::Statement::Label(_) | parser::Statement::Goto(_) | parser::Statement::Null => {
-            Ok(statement)
-        }
-        _ => todo!(),
+        parser::Statement::Label(_)
+        | parser::Statement::Goto(_)
+        | parser::Statement::Break { .. }
+        | parser::Statement::Continue { .. }
+        | parser::Statement::Null => Ok(statement),
     }
 }
 
