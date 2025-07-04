@@ -166,12 +166,6 @@ fn make_temporary() -> String {
     format!("tmp.{id}")
 }
 
-fn make_label(label: &str) -> String {
-    static LABEL_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let id = LABEL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    format!("{label}{id}")
-}
-
 fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val) {
     match expression {
         parser::Expression::Constant(value) => {
@@ -324,8 +318,8 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 // we jump to the false_label where we set the end result to zero
                 // when both results are non-zero then instead we set the result to one and jump
                 // straight to the end_label
-                let false_label = make_label("false");
-                let end_label = make_label("end");
+                let false_label = generator::make_label("false");
+                let end_label = generator::make_label("end");
 
                 let (left_instructions, destination_left_operand) =
                     convert_expression(*left_operand);
@@ -384,8 +378,8 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 // jump to a true_label where the end result is set to 1.
                 // if no jump occurs the statement where the end result it set to 0, followed
                 // by a jump to the end-label.
-                let true_label = make_label("true");
-                let end_label = make_label("end");
+                let true_label = generator::make_label("true");
+                let end_label = generator::make_label("end");
                 let (left_instructions, destination_left_operand) =
                     convert_expression(*left_operand);
                 let mut instructions = left_instructions;
@@ -450,8 +444,8 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
             (instructions, lvalue)
         }
         parser::Expression::Conditional(left_expression, middle_expression, right_expression) => {
-            let end_label: String = make_label("end");
-            let else_label: String = make_label("else");
+            let end_label: String = generator::make_label("end");
+            let else_label: String = generator::make_label("else");
 
             let (mut instructions, condition_destination) = convert_expression(*left_expression);
             let left_expression_result = make_temporary();
@@ -517,8 +511,8 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
             optional_else_statement,
         } => match optional_else_statement {
             Some(else_statement) => {
-                let end_label: String = make_label("end");
-                let else_label: String = make_label("else");
+                let end_label: String = generator::make_label("end");
+                let else_label: String = generator::make_label("else");
 
                 let (mut instructions, condition_destination) = convert_expression(condition);
                 let condition_expression_result = make_temporary();
@@ -549,7 +543,7 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
                 instructions
             }
             None => {
-                let end_label: String = make_label("end");
+                let end_label: String = generator::make_label("end");
                 let (mut instructions, condition_destination) = convert_expression(condition);
                 let right_expression_result = make_temporary();
                 let right_expression_result = Val::Var(right_expression_result);

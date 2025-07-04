@@ -1,4 +1,5 @@
 mod label_resolution;
+mod loop_labeling;
 mod variable_resolution;
 
 use super::generator;
@@ -18,6 +19,8 @@ pub fn run_semantic_analysis(
     let function_body = variable_resolution::analyse(&identifier, function_body)
         .with_context(|| format!("running semantic analysis in function: {}", identifier))?;
     let function_body = label_resolution::analyse(&identifier, function_body)
+        .with_context(|| format!("running semantic analysis in function: {}", identifier))?;
+    let function_body = loop_labeling::analyse(&identifier, function_body)
         .with_context(|| format!("running semantic analysis in function: {}", identifier))?;
 
     Ok(parser::AbstractSyntaxTree::Program(
