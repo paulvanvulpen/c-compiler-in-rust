@@ -41,12 +41,19 @@ fn update_label_map(
             }
             Ok(())
         }
+        parser::Statement::While { body, .. }
+        | parser::Statement::DoWhile { body, .. }
+        | parser::Statement::For { body, .. } => {
+            update_label_map(&*body, label_map)?;
+            Ok(())
+        }
         parser::Statement::Compound(block) => update_label_map_in_block(block, label_map),
         parser::Statement::Expression(..)
         | parser::Statement::Return(..)
         | parser::Statement::Goto(..)
+        | parser::Statement::Break { .. }
+        | parser::Statement::Continue { .. }
         | parser::Statement::Null => Ok(()),
-        _ => todo!(),
     }
 }
 
@@ -81,16 +88,57 @@ fn resolve_statement(
                 None
             },
         }),
-        parser::Statement::Compound(block) => {
-            // let mut copy_of_variable_map: HashMap<String, String> = label_map.clone();
-            Ok(parser::Statement::Compound(resolve_block(
-                block, label_map,
-            )?))
+        parser::Statement::Compound(block) => Ok(parser::Statement::Compound(resolve_block(
+            block, label_map,
+        )?)),
+        parser::Statement::While {
+            condition,
+            body,
+            label,
+        } => {
+            let body =
+                resolve_statement(*body, label_map).context("resolving a while statement")?;
+            Ok(parser::Statement::While {
+                condition,
+                body: Box::new(body),
+                label,
+            })
         }
-        parser::Statement::Expression(..)
+        parser::Statement::DoWhile {
+            body,
+            condition,
+            label,
+        } => {
+            let body =
+                resolve_statement(*body, label_map).context("resolving a while statement")?;
+            Ok(parser::Statement::DoWhile {
+                body: Box::new(body),
+                condition,
+                label,
+            })
+        }
+        parser::Statement::For {
+            init,
+            condition,
+            post,
+            body,
+            label,
+        } => {
+            let body = resolve_statement(*body, label_map).context("resolving a for statement")?;
+
+            Ok(parser::Statement::For {
+                init,
+                condition,
+                post,
+                body: Box::new(body),
+                label,
+            })
+        }
+        parser::Statement::Break { .. }
+        | parser::Statement::Continue { .. }
+        | parser::Statement::Expression(..)
         | parser::Statement::Return(..)
         | parser::Statement::Null => Ok(statement),
-        _ => todo!(),
     }
 }
 
