@@ -35,7 +35,7 @@ fn resolve_statement(
         parser::Statement::DoWhile {
             body, condition, ..
         } => {
-            let label = generator::make_label("do-while");
+            let label = generator::make_label("dowhile");
             let body = resolve_statement(*body, Some(label.clone()))
                 .context("resolving a do-while statement")?;
             Ok(parser::Statement::DoWhile {

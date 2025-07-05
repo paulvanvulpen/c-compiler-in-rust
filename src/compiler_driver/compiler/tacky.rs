@@ -575,11 +575,163 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
         parser::Statement::Label(identifier) => {
             vec![Instruction::Label { identifier }]
         }
+        parser::Statement::Continue { label } => {
+            vec![Instruction::Jump {
+                target: format!("continue_{}", label.unwrap()),
+            }]
+        }
+        parser::Statement::Break { label } => {
+            vec![Instruction::Jump {
+                target: format!("break_{}", label.unwrap()),
+            }]
+        }
+        parser::Statement::DoWhile {
+            body,
+            condition,
+            label,
+        } => {
+            let start_label: String = generator::make_label("start");
+            let mut instructions: Vec<Instruction> = vec![];
+            instructions.push(Instruction::Label {
+                identifier: start_label.clone(),
+            });
+            let body_instructions = convert_statement(*body);
+            instructions.extend(body_instructions);
+            instructions.push(Instruction::Label {
+                identifier: format!("continue_{}", label.clone().unwrap()),
+            });
+
+            let (condition_instructions, condition_destination) = convert_expression(condition);
+            instructions.extend(condition_instructions);
+            let condition_expression_result = make_temporary();
+            let condition_expression_result = Val::Var(condition_expression_result);
+            instructions.push(Instruction::Copy {
+                source: condition_destination,
+                destination: condition_expression_result.clone(),
+            });
+            instructions.push(Instruction::JumpIfNotZero {
+                condition: condition_expression_result,
+                target: start_label.clone(),
+            });
+            instructions.push(Instruction::Label {
+                identifier: format!("break_{}", label.unwrap()),
+            });
+            instructions
+        }
+        parser::Statement::While {
+            condition,
+            body,
+            label,
+        } => {
+            let mut instructions: Vec<Instruction> = vec![];
+            instructions.push(Instruction::Label {
+                identifier: format!("continue_{}", label.clone().unwrap()),
+            });
+            let (condition_instructions, condition_destination) = convert_expression(condition);
+            instructions.extend(condition_instructions);
+            let condition_expression_result = make_temporary();
+            let condition_expression_result = Val::Var(condition_expression_result);
+            instructions.push(Instruction::Copy {
+                source: condition_destination,
+                destination: condition_expression_result.clone(),
+            });
+            instructions.push(Instruction::JumpIfZero {
+                condition: condition_expression_result,
+                target: format!("break_{}", label.clone().unwrap()),
+            });
+            let body_instructions = convert_statement(*body);
+            instructions.extend(body_instructions);
+            instructions.push(Instruction::Jump {
+                target: format!("continue_{}", label.clone().unwrap()),
+            });
+            instructions.push(Instruction::Label {
+                identifier: format!("break_{}", label.unwrap()),
+            });
+            instructions
+        }
+        parser::Statement::For {
+            init,
+            condition,
+            post,
+            body,
+            label,
+        } => {
+            let start_label: String = generator::make_label("start");
+            let mut instructions = convert_for_init(init);
+            instructions.push(Instruction::Label {
+                identifier: start_label.clone(),
+            });
+            if let Some(condition) = condition {
+                let (condition_instructions, condition_destination) = convert_expression(condition);
+                instructions.extend(condition_instructions);
+                let condition_expression_result = make_temporary();
+                let condition_expression_result = Val::Var(condition_expression_result);
+                instructions.push(Instruction::Copy {
+                    source: condition_destination,
+                    destination: condition_expression_result.clone(),
+                });
+                instructions.push(Instruction::JumpIfZero {
+                    condition: condition_expression_result,
+                    target: format!("break_{}", label.clone().unwrap()),
+                });
+            }
+            let body_instructions = convert_statement(*body);
+            instructions.extend(body_instructions);
+            instructions.push(Instruction::Label {
+                identifier: format!("continue_{}", label.clone().unwrap()),
+            });
+            if let Some(post) = post {
+                let (post_instructions, ..) = convert_expression(post);
+                instructions.extend(post_instructions);
+            }
+            instructions.push(Instruction::Jump {
+                target: start_label,
+            });
+            instructions.push(Instruction::Label {
+                identifier: format!("break_{}", label.unwrap()),
+            });
+
+            instructions
+        }
         parser::Statement::Null => {
             vec![]
         }
-        _ => todo!(),
     }
+}
+
+fn convert_declaration(declaration: parser::Declaration) -> Vec<Instruction> {
+    let mut tacky_instructions: Vec<Instruction> = vec![];
+    let parser::Declaration::Declaration { identifier, init } = declaration;
+    if let Some(unpacked_init) = init {
+        let assignment_expression = parser::Expression::Assignment(
+            Box::new(parser::Expression::Var {
+                identifier: identifier.clone(),
+            }),
+            Box::new(unpacked_init),
+        );
+        let (instructions, ..) = convert_expression(assignment_expression);
+
+        tacky_instructions.extend(instructions);
+    }
+    tacky_instructions
+}
+
+fn convert_for_init(for_init: parser::ForInit) -> Vec<Instruction> {
+    let mut tacky_instructions: Vec<Instruction> = vec![];
+    match for_init {
+        parser::ForInit::InitialDeclaration(declaration) => {
+            let instructions = convert_declaration(declaration);
+            tacky_instructions.extend(instructions);
+        }
+        parser::ForInit::InitialOptionalExpression(optional_expression) => {
+            if let Some(expression) = optional_expression {
+                let (instructions, ..) = convert_expression(expression);
+                tacky_instructions.extend(instructions);
+            }
+        }
+    }
+
+    tacky_instructions
 }
 
 fn convert_block(block: parser::Block) -> Vec<Instruction> {
@@ -588,17 +740,8 @@ fn convert_block(block: parser::Block) -> Vec<Instruction> {
     for block_item in body {
         match block_item {
             parser::BlockItem::Declaration(declaration) => {
-                let parser::Declaration::Declaration { identifier, init } = declaration;
-                if let Some(unpacked_init) = init {
-                    let assignment_expression = parser::Expression::Assignment(
-                        Box::new(parser::Expression::Var {
-                            identifier: identifier.clone(),
-                        }),
-                        Box::new(unpacked_init),
-                    );
-                    let (instructions, ..) = convert_expression(assignment_expression);
-                    tacky_instructions.extend(instructions);
-                }
+                let instructions = convert_declaration(declaration);
+                tacky_instructions.extend(instructions);
             }
             parser::BlockItem::Statement(statement) => {
                 let instructions = convert_statement(statement);

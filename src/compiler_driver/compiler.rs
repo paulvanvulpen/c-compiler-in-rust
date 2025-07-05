@@ -28,6 +28,7 @@ pub fn run_compiler(args: &Args, input_file_path: &Path) -> Result<()> {
     }
 
     let ast = semantic_analysis::run_semantic_analysis(ast)?;
+    info!("\nAST:\n{}", ast.visualize(0).as_str());
 
     if args.validate {
         return Ok(());
