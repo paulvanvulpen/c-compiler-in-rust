@@ -77,7 +77,7 @@ pub enum Statement {
         optional_else_statement: Option<Box<Statement>>,
     },
     Goto(String),
-    Label(String),
+    Label(String, Box<Statement>),
     Compound(Block),
     Break {
         label: Option<String>,
@@ -307,7 +307,7 @@ fn parse_declaration(lexer_tokens: &[Token]) -> Result<(Declaration, &[Token])> 
 //      | <exp> ";"
 //      | "if" "(" <exp> ")" <statement> [ "else" <statement> ]
 //      | "goto" identifier ";"
-//      | identifier ":"
+//      | identifier ":" <statement>
 //      | <block>
 //      | "break" ";"
 //      | "continue" ";"
@@ -426,7 +426,6 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                 &lexer_tokens,
             ))
         }
-        // | "for" "(" <for-init> [ <exp> ] ";" [ <exp> ] ")" <statement>
         Token::For => {
             let lexer_tokens = &lexer_tokens[1..];
             let lexer_tokens =
@@ -468,7 +467,12 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
         }
         _ => match &lexer_tokens[0..2] {
             [Token::Identifier(identifier), Token::Colon] => {
-                Ok((Statement::Label(identifier.clone()), &lexer_tokens[2..]))
+                let (following_statement, lexer_tokens) =
+                    parse_statement(&lexer_tokens[2..]).context("Parsing a label statement")?;
+                Ok((
+                    Statement::Label(identifier.clone(), Box::new(following_statement)),
+                    &lexer_tokens,
+                ))
             }
             _ => {
                 let (expression, lexer_tokens) =

@@ -572,8 +572,12 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
         parser::Statement::Goto(target) => {
             vec![Instruction::Jump { target }]
         }
-        parser::Statement::Label(identifier) => {
-            vec![Instruction::Label { identifier }]
+        parser::Statement::Label(identifier, followed_statement) => {
+            let mut instructions: Vec<Instruction> = vec![];
+            instructions.push(Instruction::Label { identifier });
+            instructions.extend(convert_statement(*followed_statement));
+
+            instructions
         }
         parser::Statement::Continue { label } => {
             vec![Instruction::Jump {

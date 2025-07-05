@@ -141,10 +141,18 @@ fn resolve_statement(
             })
         }
         parser::Statement::Expression(expression) => Ok(parser::Statement::Expression(
-            resolve_expression(expression, variable_map)?,
+            resolve_expression(expression, variable_map)
+                .context("resolving an expression statement")?,
         )),
-        parser::Statement::Label(_)
-        | parser::Statement::Goto(_)
+        parser::Statement::Label(label, following_statement) => Ok(parser::Statement::Label(
+            label,
+            Box::new(
+                resolve_statement(*following_statement, variable_map)
+                    .context("resolving a label statement")?,
+            ),
+        )),
+
+        parser::Statement::Goto(..)
         | parser::Statement::Break { .. }
         | parser::Statement::Continue { .. }
         | parser::Statement::Null => Ok(statement),

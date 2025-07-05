@@ -187,7 +187,9 @@ impl visualize::Visualizer for parser::Statement {
                 },
                 body.visualize(depth + 1),
             ),
-            parser::Statement::Label(identifier) => format!("{identifier}:"),
+            parser::Statement::Label(identifier, statement) => {
+                format!("{identifier}: {}", statement.visualize(depth + 1))
+            }
             parser::Statement::Compound(block) => block.visualize(depth),
             parser::Statement::Null => format!("{prefix};"),
         }

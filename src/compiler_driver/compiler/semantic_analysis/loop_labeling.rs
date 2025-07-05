@@ -84,11 +84,16 @@ fn resolve_statement(
         parser::Statement::Compound(block) => Ok(parser::Statement::Compound(
             resolve_block(block, label).context("resolving a compound statement")?,
         )),
-        Statement::Return(_)
-        | Statement::Expression(_)
-        | Statement::Goto(_)
-        | Statement::Label(_)
-        | Statement::Null => Ok(statement),
+        parser::Statement::Label(goto_label, statement) => Ok(parser::Statement::Label(
+            goto_label,
+            Box::new(
+                resolve_statement(*statement, label.clone())
+                    .context("resolving a compound statement")?,
+            ),
+        )),
+        Statement::Return(_) | Statement::Expression(_) | Statement::Goto(_) | Statement::Null => {
+            Ok(statement)
+        }
     }
 }
 

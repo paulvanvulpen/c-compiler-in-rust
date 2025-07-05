@@ -22,12 +22,13 @@ fn update_label_map(
     label_map: &mut HashMap<String, String>,
 ) -> anyhow::Result<()> {
     match statement {
-        parser::Statement::Label(identifier) => {
+        parser::Statement::Label(identifier, statement) => {
             if label_map.contains_key(identifier) {
                 return Err(anyhow!("Duplicate label statement!"));
             }
             let unique_name = generator::make_temporary_from_identifier(&identifier);
             label_map.insert(identifier.clone(), unique_name);
+            update_label_map(&*statement, label_map)?;
             Ok(())
         }
         parser::Statement::If {
@@ -59,7 +60,7 @@ fn update_label_map(
 
 fn resolve_statement(
     statement: parser::Statement,
-    label_map: &mut HashMap<String, String>,
+    label_map: &HashMap<String, String>,
 ) -> anyhow::Result<parser::Statement> {
     match statement {
         parser::Statement::Goto(identifier) => {
@@ -72,8 +73,13 @@ fn resolve_statement(
                 ))
             }
         }
-        parser::Statement::Label(identifier) => {
-            Ok(parser::Statement::Label(label_map[&identifier].clone()))
+        parser::Statement::Label(identifier, following_statement) => {
+            let resolved_statement = resolve_statement(*following_statement, label_map)
+                .context("resolving label statement")?;
+            Ok(parser::Statement::Label(
+                label_map[&identifier].clone(),
+                Box::new(resolved_statement),
+            ))
         }
         parser::Statement::If {
             condition,
@@ -144,35 +150,17 @@ fn resolve_statement(
 
 fn resolve_block(
     block: parser::Block,
-    label_map: &mut HashMap<String, String>,
+    label_map: &HashMap<String, String>,
 ) -> anyhow::Result<parser::Block> {
     let parser::Block::Block(mut block) = block;
 
-    let mut is_last_item_label_statement = false;
     for block_item in &mut block {
-        match block_item {
-            parser::BlockItem::Statement(statement) => {
-                let original = std::mem::take(statement);
-                let resolved_statement = resolve_statement(original, label_map)
-                    .context("analysed statement block item")?;
-                is_last_item_label_statement =
-                    matches!(resolved_statement, parser::Statement::Label(..));
-                *block_item = parser::BlockItem::Statement(resolved_statement);
-            }
-            parser::BlockItem::Declaration(..) => {
-                if is_last_item_label_statement {
-                    return Err(anyhow!(
-                        "In C17, a label must precede a statement, not a declaration"
-                    ));
-                }
-                is_last_item_label_statement = false;
-            }
+        if let parser::BlockItem::Statement(statement) = block_item {
+            let original = std::mem::take(statement);
+            let resolved_statement =
+                resolve_statement(original, label_map).context("analysed statement block item")?;
+            *block_item = parser::BlockItem::Statement(resolved_statement);
         }
-    }
-    if is_last_item_label_statement {
-        return Err(anyhow!(
-            "In C17, labels must be followed by a valid statement"
-        ));
     }
     Ok(parser::Block::Block(block))
 }
@@ -183,6 +171,6 @@ pub fn analyse(function_name: &str, function_body: parser::Block) -> anyhow::Res
     update_label_map_in_block(&function_body, &mut label_map)
         .with_context(|| format!("update label_map for function body of: {}", function_name))?;
 
-    resolve_block(function_body, &mut label_map)
+    resolve_block(function_body, &label_map)
         .with_context(|| format!("analysing function body of: {}", function_name))
 }
