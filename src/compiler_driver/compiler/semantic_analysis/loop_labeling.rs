@@ -1,6 +1,5 @@
 use super::generator;
 use super::parser;
-use crate::compiler_driver::compiler::parser::Statement;
 use anyhow::{Context, anyhow};
 
 fn resolve_statement(
@@ -20,6 +19,27 @@ fn resolve_statement(
             }
             Ok(parser::Statement::Continue { label })
         }
+        parser::Statement::Case {
+            match_value,
+            follow_statement,
+            ..
+        } => Ok(parser::Statement::Case {
+            match_value,
+            follow_statement: Box::new(
+                resolve_statement(*follow_statement, label.clone())
+                    .context("resolving a switch-case statement")?,
+            ),
+            label,
+        }),
+        parser::Statement::Default {
+            follow_statement, ..
+        } => Ok(parser::Statement::Default {
+            follow_statement: Box::new(
+                resolve_statement(*follow_statement, label.clone())
+                    .context("resolving a switch-default statement")?,
+            ),
+            label,
+        }),
         parser::Statement::While {
             condition, body, ..
         } => {
@@ -62,6 +82,22 @@ fn resolve_statement(
                 label: Some(label),
             })
         }
+        parser::Statement::Switch {
+            condition,
+            cases,
+            body,
+            ..
+        } => {
+            let label = generator::make_label("switch");
+            let body = resolve_statement(*body, Some(label.clone()))
+                .context("resolving a switch statement")?;
+            Ok(parser::Statement::Switch {
+                condition,
+                cases,
+                body: Box::new(body),
+                label: Some(label),
+            })
+        }
         parser::Statement::If {
             condition,
             then_statement,
@@ -91,9 +127,10 @@ fn resolve_statement(
                     .context("resolving a compound statement")?,
             ),
         )),
-        Statement::Return(_) | Statement::Expression(_) | Statement::Goto(_) | Statement::Null => {
-            Ok(statement)
-        }
+        parser::Statement::Return(_)
+        | parser::Statement::Expression(_)
+        | parser::Statement::Goto(_)
+        | parser::Statement::Null => Ok(statement),
     }
 }
 

@@ -44,7 +44,8 @@ fn update_label_map(
         }
         parser::Statement::While { body, .. }
         | parser::Statement::DoWhile { body, .. }
-        | parser::Statement::For { body, .. } => {
+        | parser::Statement::For { body, .. }
+        | parser::Statement::Switch { body, .. } => {
             update_label_map(&*body, label_map)?;
             Ok(())
         }
@@ -54,6 +55,8 @@ fn update_label_map(
         | parser::Statement::Goto(..)
         | parser::Statement::Break { .. }
         | parser::Statement::Continue { .. }
+        | parser::Statement::Case { .. }
+        | parser::Statement::Default { .. }
         | parser::Statement::Null => Ok(()),
     }
 }
@@ -137,6 +140,45 @@ fn resolve_statement(
                 condition,
                 post,
                 body: Box::new(body),
+                label,
+            })
+        }
+        parser::Statement::Switch {
+            condition,
+            cases,
+            body,
+            label,
+        } => {
+            let body =
+                resolve_statement(*body, label_map).context("resolving a switch statement")?;
+            Ok(parser::Statement::Switch {
+                condition,
+                cases,
+                body: Box::new(body),
+                label,
+            })
+        }
+        parser::Statement::Case {
+            match_value,
+            follow_statement,
+            label,
+        } => {
+            let follow_statement = resolve_statement(*follow_statement, label_map)
+                .context("resolving a switch-case statement")?;
+            Ok(parser::Statement::Case {
+                match_value,
+                follow_statement: Box::new(follow_statement),
+                label,
+            })
+        }
+        parser::Statement::Default {
+            follow_statement,
+            label,
+        } => {
+            let follow_statement = resolve_statement(*follow_statement, label_map)
+                .context("resolving a switch-default statement")?;
+            Ok(parser::Statement::Default {
+                follow_statement: Box::new(follow_statement),
                 label,
             })
         }

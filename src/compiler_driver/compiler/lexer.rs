@@ -60,6 +60,9 @@ pub enum Token {
     DoubleCloseAngleBracketEqual,
     QuestionMark,
     Colon,
+    Switch,
+    Case,
+    Default,
 }
 
 lazy_static! {
@@ -104,6 +107,9 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
             "break" => (Some(Token::Break), remainder),
             "continue" => (Some(Token::Continue), remainder),
             "goto" => (Some(Token::Goto), remainder),
+            "switch" => (Some(Token::Switch), remainder),
+            "case" => (Some(Token::Case), remainder),
+            "default" => (Some(Token::Default), remainder),
             _ => (Some(Token::Identifier(String::from(token_str))), remainder),
         };
     }

@@ -187,6 +187,42 @@ impl visualize::Visualizer for parser::Statement {
                 },
                 body.visualize(depth + 1),
             ),
+            parser::Statement::Switch {
+                condition,
+                cases,
+                body,
+                label,
+            } => format!(
+                "{}: Switch(\n\
+                    {prefix}{indent}condition={}\n\
+                    {prefix}{indent}cases={}\n\
+                    {prefix}{indent}body={}\n\
+                    {prefix})",
+                label.as_deref().unwrap_or_else(|| "undefined"),
+                condition.visualize(depth + 1),
+                cases.join(", "),
+                body.visualize(depth + 1)
+            ),
+            parser::Statement::Case {
+                match_value,
+                follow_statement,
+                label,
+            } => format!(
+                "{} Case {}:\n\
+                    {prefix}{indent}follow_statement={}\n",
+                label.as_deref().unwrap_or_else(|| "undefined"),
+                match_value.visualize(depth + 1),
+                follow_statement.visualize(depth + 1)
+            ),
+            parser::Statement::Default {
+                follow_statement,
+                label,
+            } => format!(
+                "{} Default:\n\
+                    {prefix}{indent}follow_statement={}\n",
+                label.as_deref().unwrap_or_else(|| "undefined"),
+                follow_statement.visualize(depth + 1)
+            ),
             parser::Statement::Label(identifier, statement) => {
                 format!("{identifier}: {}", statement.visualize(depth + 1))
             }

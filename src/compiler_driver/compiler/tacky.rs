@@ -697,6 +697,9 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
 
             instructions
         }
+        parser::Statement::Switch { .. }
+        | parser::Statement::Case { .. }
+        | parser::Statement::Default { .. } => todo!(),
         parser::Statement::Null => {
             vec![]
         }
