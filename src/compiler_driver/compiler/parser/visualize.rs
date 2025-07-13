@@ -200,27 +200,37 @@ impl visualize::Visualizer for parser::Statement {
                     {prefix})",
                 label.as_deref().unwrap_or_else(|| "undefined"),
                 condition.visualize(depth + 1),
-                cases.join(", "),
+                cases
+                    .iter()
+                    .map(|e| e.unique_label.as_str())
+                    .collect::<Vec<&str>>()
+                    .join(", "),
                 body.visualize(depth + 1)
             ),
             parser::Statement::Case {
                 match_value,
                 follow_statement,
+                break_label,
                 label,
             } => format!(
                 "{} Case {}:\n\
-                    {prefix}{indent}follow_statement={}\n",
-                label.as_deref().unwrap_or_else(|| "undefined"),
-                match_value.visualize(depth + 1),
-                follow_statement.visualize(depth + 1)
+                    {prefix}{indent}follow_statement={}\n
+                    {prefix}{indent}break_label={}\n",
+                label,
+                match_value,
+                follow_statement.visualize(depth + 1),
+                break_label.as_deref().unwrap_or_else(|| "undefined"),
             ),
             parser::Statement::Default {
+                break_label,
                 follow_statement,
                 label,
             } => format!(
                 "{} Default:\n\
-                    {prefix}{indent}follow_statement={}\n",
-                label.as_deref().unwrap_or_else(|| "undefined"),
+                    {prefix}{indent}follow_statement={}\n\
+                    {prefix}{indent}break_label={}\n",
+                label,
+                break_label.as_deref().unwrap_or_else(|| "undefined"),
                 follow_statement.visualize(depth + 1)
             ),
             parser::Statement::Label(identifier, statement) => {

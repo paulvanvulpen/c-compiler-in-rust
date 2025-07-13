@@ -161,6 +161,7 @@ fn resolve_statement(
         parser::Statement::Case {
             match_value,
             follow_statement,
+            break_label,
             label,
         } => {
             let follow_statement = resolve_statement(*follow_statement, label_map)
@@ -168,17 +169,20 @@ fn resolve_statement(
             Ok(parser::Statement::Case {
                 match_value,
                 follow_statement: Box::new(follow_statement),
+                break_label,
                 label,
             })
         }
         parser::Statement::Default {
             follow_statement,
+            break_label,
             label,
         } => {
             let follow_statement = resolve_statement(*follow_statement, label_map)
                 .context("resolving a switch-default statement")?;
             Ok(parser::Statement::Default {
                 follow_statement: Box::new(follow_statement),
+                break_label,
                 label,
             })
         }

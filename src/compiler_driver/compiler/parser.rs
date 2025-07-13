@@ -63,6 +63,20 @@ pub enum Declaration {
     },
 }
 
+pub struct LabelAndMatchValue {
+    unique_label: String,
+    match_value: Option<usize>,
+}
+
+impl LabelAndMatchValue {
+    pub fn new(unique_label: String, match_value: Option<usize>) -> Self {
+        Self {
+            unique_label,
+            match_value,
+        }
+    }
+}
+
 #[derive(Default)]
 pub enum Statement {
     Return(Expression),
@@ -100,18 +114,20 @@ pub enum Statement {
     },
     Switch {
         condition: Expression,
-        cases: Vec<String>,
+        cases: Vec<LabelAndMatchValue>,
         body: Box<Statement>,
         label: Option<String>,
     },
     Case {
-        match_value: Expression,
+        match_value: usize, // only support positive integers for now
         follow_statement: Box<Statement>,
-        label: Option<String>,
+        break_label: Option<String>,
+        label: String,
     },
     Default {
-        label: Option<String>,
+        break_label: Option<String>,
         follow_statement: Box<Statement>,
+        label: String,
     },
     #[default]
     Null,
@@ -502,16 +518,20 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                     "Only supporting positive integer values for now. Missing support for constant-folding"
                 ));
             }
-            let (match_value, lexer_tokens) = parse_expression(lexer_tokens, 0)?;
-            let lexer_tokens =
-                expect(Token::Colon, lexer_tokens).context("Parsing a switch-case statement")?;
+            let match_value: usize = match &lexer_tokens[0] {
+                Token::Constant(x) => *x,
+                _ => unreachable!("earlier check already guarantees this is a constant"),
+            };
+            let lexer_tokens = expect(Token::Colon, &lexer_tokens[1..])
+                .context("Parsing a switch-case statement")?;
             let (follow_statement, lexer_tokens) =
                 parse_statement(lexer_tokens).context("Parsing a switch-case statement")?;
             Ok((
                 Statement::Case {
                     match_value,
                     follow_statement: Box::new(follow_statement),
-                    label: None,
+                    break_label: None,
+                    label: format!("case_{}", match_value),
                 },
                 &lexer_tokens,
             ))
@@ -525,7 +545,8 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
             Ok((
                 Statement::Default {
                     follow_statement: Box::new(follow_statement),
-                    label: None,
+                    break_label: None,
+                    label: String::from("default"),
                 },
                 &lexer_tokens,
             ))
