@@ -214,7 +214,7 @@ impl visualize::Visualizer for parser::Statement {
                 label,
             } => format!(
                 "{} Case {}:\n\
-                    {prefix}{indent}follow_statement={}\n
+                    {prefix}{indent}follow_statement=\n{}\n
                     {prefix}{indent}break_label={}\n",
                 label,
                 match_value,
@@ -248,10 +248,10 @@ impl visualize::Visualizer for parser::Expression {
         let prefix = indent.repeat(depth as usize);
         match self {
             parser::Expression::Constant(value) => {
-                format!("{prefix}Constant({value})")
+                format!("Constant({value})")
             }
             parser::Expression::Var { identifier } => {
-                format!("{prefix}Var({identifier})")
+                format!("Var({identifier})")
             }
             parser::Expression::Unary(unary_operator, boxed_expression) => match unary_operator {
                 parser::UnaryOperator::PostfixDecrement

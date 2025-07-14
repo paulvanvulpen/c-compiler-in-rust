@@ -50,13 +50,17 @@ fn update_label_map(
             Ok(())
         }
         parser::Statement::Compound(block) => update_label_map_in_block(block, label_map),
+        parser::Statement::Case {
+            follow_statement, ..
+        }
+        | parser::Statement::Default {
+            follow_statement, ..
+        } => update_label_map(follow_statement, label_map),
         parser::Statement::Expression(..)
         | parser::Statement::Return(..)
         | parser::Statement::Goto(..)
         | parser::Statement::Break { .. }
         | parser::Statement::Continue { .. }
-        | parser::Statement::Case { .. }
-        | parser::Statement::Default { .. }
         | parser::Statement::Null => Ok(()),
     }
 }

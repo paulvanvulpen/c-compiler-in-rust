@@ -64,8 +64,8 @@ pub enum Declaration {
 }
 
 pub struct LabelAndMatchValue {
-    unique_label: String,
-    match_value: Option<usize>,
+    pub unique_label: String,
+    pub match_value: Option<usize>,
 }
 
 impl LabelAndMatchValue {
@@ -531,7 +531,7 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                     match_value,
                     follow_statement: Box::new(follow_statement),
                     break_label: None,
-                    label: format!("case_{}", match_value),
+                    label: format!("case_{}_", match_value),
                 },
                 &lexer_tokens,
             ))

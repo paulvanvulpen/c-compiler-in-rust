@@ -7,7 +7,7 @@ fn resolve_statement(
     statement: parser::Statement,
     break_parent_label: Option<String>,
     continue_parent_label: Option<String>,
-    cases: &mut HashMap<String, parser::LabelAndMatchValue>,
+    cases: Option<&mut HashMap<String, parser::LabelAndMatchValue>>,
 ) -> anyhow::Result<parser::Statement> {
     match statement {
         parser::Statement::Break { .. } => {
@@ -32,57 +32,71 @@ fn resolve_statement(
             follow_statement,
             label,
             ..
-        } => {
-            if cases.contains_key(&label) {
-                return Err(anyhow!("Duplicate case statement: {}!", &label));
+        } => match cases {
+            Some(unpacked_cases) => {
+                if unpacked_cases.contains_key(&label) {
+                    return Err(anyhow!("Duplicate case statement: {}!", &label));
+                }
+
+                if continue_parent_label.eq(&break_parent_label) {}
+                let unique_label = generator::make_label(&label);
+                unpacked_cases.insert(
+                    label.clone(),
+                    parser::LabelAndMatchValue::new(unique_label.clone(), Some(match_value)),
+                );
+                Ok(parser::Statement::Case {
+                    match_value,
+                    follow_statement: Box::new(
+                        resolve_statement(
+                            *follow_statement,
+                            break_parent_label.clone(),
+                            continue_parent_label.clone(),
+                            Some(unpacked_cases),
+                        )
+                        .context("resolving a switch-case statement")?,
+                    ),
+                    break_label: break_parent_label,
+                    label: unique_label,
+                })
             }
-            let unique_label = generator::make_label(&label);
-            cases.insert(
-                label.clone(),
-                parser::LabelAndMatchValue::new(unique_label, Some(match_value)),
-            );
-            Ok(parser::Statement::Case {
-                match_value,
-                follow_statement: Box::new(
-                    resolve_statement(
-                        *follow_statement,
-                        break_parent_label.clone(),
-                        continue_parent_label.clone(),
-                        cases,
-                    )
-                    .context("resolving a switch-case statement")?,
-                ),
-                break_label: break_parent_label,
-                label,
-            })
-        }
+            None => Err(anyhow!(
+                "case statement outside of switch scope: {}!",
+                &label
+            )),
+        },
         parser::Statement::Default {
             follow_statement,
             label,
             ..
-        } => {
-            if cases.contains_key(&label) {
-                return Err(anyhow!("Duplicate default statement: {}!", &label));
+        } => match cases {
+            Some(unpacked_cases) => {
+                if unpacked_cases.contains_key(&label) {
+                    return Err(anyhow!("Duplicate default statement: {}!", &label));
+                }
+                let unique_label = generator::make_label(&label);
+                unpacked_cases.insert(
+                    label.clone(),
+                    parser::LabelAndMatchValue::new(unique_label.clone(), None),
+                );
+                Ok(parser::Statement::Default {
+                    follow_statement: Box::new(
+                        resolve_statement(
+                            *follow_statement,
+                            break_parent_label.clone(),
+                            continue_parent_label.clone(),
+                            Some(unpacked_cases),
+                        )
+                        .context("resolving a switch-default statement")?,
+                    ),
+                    break_label: break_parent_label,
+                    label: unique_label,
+                })
             }
-            let unique_label = generator::make_label(&label);
-            cases.insert(
-                label.clone(),
-                parser::LabelAndMatchValue::new(unique_label, None),
-            );
-            Ok(parser::Statement::Default {
-                follow_statement: Box::new(
-                    resolve_statement(
-                        *follow_statement,
-                        break_parent_label.clone(),
-                        continue_parent_label.clone(),
-                        cases,
-                    )
-                    .context("resolving a switch-default statement")?,
-                ),
-                break_label: break_parent_label,
-                label,
-            })
-        }
+            None => Err(anyhow!(
+                "case statement outside of switch scope: {}!",
+                &label
+            )),
+        },
         parser::Statement::While {
             condition, body, ..
         } => {
@@ -134,7 +148,7 @@ fn resolve_statement(
                 *body,
                 Some(label.clone()),
                 continue_parent_label,
-                &mut cases_map,
+                Some(&mut cases_map),
             )
             .context("resolving a switch statement")?;
 
@@ -151,31 +165,34 @@ fn resolve_statement(
             condition,
             then_statement,
             optional_else_statement,
-        } => Ok(parser::Statement::If {
-            condition,
-            then_statement: Box::new(
-                resolve_statement(
-                    *then_statement,
-                    break_parent_label.clone(),
-                    continue_parent_label.clone(),
-                    cases,
-                )
-                .context("resolving an if-statement")?,
-            ),
-            optional_else_statement: if let Some(else_statement) = optional_else_statement {
-                Some(Box::new(
+        } => {
+            let mut cases = cases;
+            Ok(parser::Statement::If {
+                condition,
+                then_statement: Box::new(
                     resolve_statement(
-                        *else_statement,
-                        break_parent_label,
-                        continue_parent_label,
-                        cases,
+                        *then_statement,
+                        break_parent_label.clone(),
+                        continue_parent_label.clone(),
+                        cases.as_deref_mut(),
                     )
                     .context("resolving an if-statement")?,
-                ))
-            } else {
-                None
-            },
-        }),
+                ),
+                optional_else_statement: if let Some(else_statement) = optional_else_statement {
+                    Some(Box::new(
+                        resolve_statement(
+                            *else_statement,
+                            break_parent_label,
+                            continue_parent_label,
+                            cases,
+                        )
+                        .context("resolving an if-statement")?,
+                    ))
+                } else {
+                    None
+                },
+            })
+        }
         parser::Statement::Compound(block) => Ok(parser::Statement::Compound(
             resolve_block(block, break_parent_label, continue_parent_label, cases)
                 .context("resolving a compound statement")?,
@@ -198,10 +215,11 @@ fn resolve_block(
     block: parser::Block,
     break_parent_label: Option<String>,
     continue_parent_label: Option<String>,
-    cases: &mut HashMap<String, parser::LabelAndMatchValue>,
+    cases: Option<&mut HashMap<String, parser::LabelAndMatchValue>>,
 ) -> anyhow::Result<parser::Block> {
     let parser::Block::Block(mut block) = block;
 
+    let mut cases = cases;
     for block_item in &mut block {
         match block_item {
             parser::BlockItem::Statement(statement) => {
@@ -210,7 +228,7 @@ fn resolve_block(
                     original,
                     break_parent_label.clone(),
                     continue_parent_label.clone(),
-                    cases,
+                    cases.as_deref_mut(),
                 )
                 .context("analysed statement block item")?;
                 *block_item = parser::BlockItem::Statement(resolved_statement);
@@ -223,7 +241,6 @@ fn resolve_block(
 }
 
 pub fn analyse(function_name: &str, function_body: parser::Block) -> anyhow::Result<parser::Block> {
-    let mut cases_placeholder: HashMap<String, parser::LabelAndMatchValue> = HashMap::new();
-    resolve_block(function_body, None, None, &mut cases_placeholder)
+    resolve_block(function_body, None, None, None)
         .with_context(|| format!("analysing function body of: {}", function_name))
 }
