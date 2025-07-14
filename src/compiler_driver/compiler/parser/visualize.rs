@@ -187,6 +187,52 @@ impl visualize::Visualizer for parser::Statement {
                 },
                 body.visualize(depth + 1),
             ),
+            parser::Statement::Switch {
+                condition,
+                cases,
+                body,
+                label,
+            } => format!(
+                "{}: Switch(\n\
+                    {prefix}{indent}condition={}\n\
+                    {prefix}{indent}cases={}\n\
+                    {prefix}{indent}body={}\n\
+                    {prefix})",
+                label.as_deref().unwrap_or_else(|| "undefined"),
+                condition.visualize(depth + 1),
+                cases
+                    .iter()
+                    .map(|e| e.unique_label.as_str())
+                    .collect::<Vec<&str>>()
+                    .join(", "),
+                body.visualize(depth + 1)
+            ),
+            parser::Statement::Case {
+                match_value,
+                follow_statement,
+                break_label,
+                label,
+            } => format!(
+                "{} Case {}:\n\
+                    {prefix}{indent}follow_statement=\n{}\n
+                    {prefix}{indent}break_label={}\n",
+                label,
+                match_value,
+                follow_statement.visualize(depth + 1),
+                break_label.as_deref().unwrap_or_else(|| "undefined"),
+            ),
+            parser::Statement::Default {
+                break_label,
+                follow_statement,
+                label,
+            } => format!(
+                "{} Default:\n\
+                    {prefix}{indent}follow_statement={}\n\
+                    {prefix}{indent}break_label={}\n",
+                label,
+                break_label.as_deref().unwrap_or_else(|| "undefined"),
+                follow_statement.visualize(depth + 1)
+            ),
             parser::Statement::Label(identifier, statement) => {
                 format!("{identifier}: {}", statement.visualize(depth + 1))
             }
@@ -202,10 +248,10 @@ impl visualize::Visualizer for parser::Expression {
         let prefix = indent.repeat(depth as usize);
         match self {
             parser::Expression::Constant(value) => {
-                format!("{prefix}Constant({value})")
+                format!("Constant({value})")
             }
             parser::Expression::Var { identifier } => {
-                format!("{prefix}Var({identifier})")
+                format!("Var({identifier})")
             }
             parser::Expression::Unary(unary_operator, boxed_expression) => match unary_operator {
                 parser::UnaryOperator::PostfixDecrement

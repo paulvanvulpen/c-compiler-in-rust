@@ -140,6 +140,51 @@ fn resolve_statement(
                 label,
             })
         }
+        parser::Statement::Switch {
+            condition,
+            cases,
+            body,
+            label,
+        } => {
+            let condition = resolve_expression(condition, variable_map)
+                .context("resolving a switch statement")?;
+            let body =
+                resolve_statement(*body, variable_map).context("resolving a switch statement")?;
+            Ok(parser::Statement::Switch {
+                condition,
+                cases,
+                body: Box::new(body),
+                label,
+            })
+        }
+        parser::Statement::Case {
+            match_value,
+            follow_statement,
+            break_label,
+            label,
+        } => {
+            let follow_statement = resolve_statement(*follow_statement, variable_map)
+                .context("resolving a switch-case statement")?;
+            Ok(parser::Statement::Case {
+                match_value,
+                follow_statement: Box::new(follow_statement),
+                break_label,
+                label,
+            })
+        }
+        parser::Statement::Default {
+            follow_statement,
+            break_label,
+            label,
+        } => {
+            let follow_statement = resolve_statement(*follow_statement, variable_map)
+                .context("resolving a switch-default statement")?;
+            Ok(parser::Statement::Default {
+                follow_statement: Box::new(follow_statement),
+                break_label,
+                label,
+            })
+        }
         parser::Statement::Expression(expression) => Ok(parser::Statement::Expression(
             resolve_expression(expression, variable_map)
                 .context("resolving an expression statement")?,

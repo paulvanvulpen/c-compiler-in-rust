@@ -6,18 +6,21 @@ mod visualize;
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program(function_definition)
-// function_definition = Function(identifier name, block_item* body)
+// function_definition = Function(identifier name, block)
 // statement = Return(exp)
 //              | If(exp condition, statement then, statement? else)
 //              | Expression(exp)
 //              | Compound(block)
-//              | Break
-//              | Continue
+//              | Break(identifier name)
+//              | Continue(identifier name)
 //              | While(exp condition, statement body)
 //              | DoWhile(statement body, exp condition)
 //              | For(for_init init, exp? condition, exp? post, statement body)
 //              | Goto(identifier name)
-//              | Label(identifier name)
+//              | Label(identifier name, statement following_statement)
+//              | Switch(exp condition, statement body, identifier* cases)
+//              | Case(exp match_value, identifier label, statement? follow_statement)
+//              | Default(identifier label, statement? follow_statement)
 //              | Null
 // declaration = Declaration(identifier name, exp? init)
 // for_init = InitDecl(declaration), InitExp(exp?)
@@ -30,14 +33,10 @@ pub enum AbstractSyntaxTree {
     Program(Program),
 }
 
-// Comments on the enums in Extended Backus-Naur form (EBNF)
-
-// <program>
 pub enum Program {
     Program(FunctionDefinition),
 }
 
-// <function>
 pub enum FunctionDefinition {
     Function { identifier: String, body: Block },
 }
@@ -46,7 +45,6 @@ pub enum Block {
     Block(Vec<BlockItem>),
 }
 
-// <block-item>
 pub enum BlockItem {
     Statement(Statement),
     Declaration(Declaration),
@@ -58,7 +56,6 @@ impl Default for BlockItem {
     }
 }
 
-// <declaration>
 pub enum Declaration {
     Declaration {
         identifier: String,
@@ -66,7 +63,20 @@ pub enum Declaration {
     },
 }
 
-// <statement>
+pub struct LabelAndMatchValue {
+    pub unique_label: String,
+    pub match_value: Option<usize>,
+}
+
+impl LabelAndMatchValue {
+    pub fn new(unique_label: String, match_value: Option<usize>) -> Self {
+        Self {
+            unique_label,
+            match_value,
+        }
+    }
+}
+
 #[derive(Default)]
 pub enum Statement {
     Return(Expression),
@@ -102,17 +112,32 @@ pub enum Statement {
         body: Box<Statement>,
         label: Option<String>,
     },
+    Switch {
+        condition: Expression,
+        cases: Vec<LabelAndMatchValue>,
+        body: Box<Statement>,
+        label: Option<String>,
+    },
+    Case {
+        match_value: usize, // only support positive integers for now
+        follow_statement: Box<Statement>,
+        break_label: Option<String>,
+        label: String,
+    },
+    Default {
+        break_label: Option<String>,
+        follow_statement: Box<Statement>,
+        label: String,
+    },
     #[default]
     Null,
 }
 
-// <for-init>
 pub enum ForInit {
     InitialDeclaration(Declaration),
     InitialOptionalExpression(Option<Expression>),
 }
 
-// <exp>
 pub enum Expression {
     Constant(usize),
     Var {
@@ -134,7 +159,6 @@ impl Default for Expression {
     }
 }
 
-// <unop>
 pub enum UnaryOperator {
     Complement,
     Negate,
@@ -145,7 +169,6 @@ pub enum UnaryOperator {
     PostfixIncrement,
 }
 
-// <binop>
 pub enum BinaryOperator {
     Add,
     Subtract,
@@ -314,6 +337,9 @@ fn parse_declaration(lexer_tokens: &[Token]) -> Result<(Declaration, &[Token])> 
 //      | "while" "(" <exp> ")" <statement>
 //      | "do <statement> "while" "(" <exp> ")" ";"
 //      | "for" "(" <for-init> [ <exp> ] ";" [ <exp> ] ")" <statement>
+//      | "switch" "(" <exp> ")" <statement>
+//      | "case" <const_exp> ":" [ <statement> ]
+//      | "default" ":" [ <statement> ]
 //      | ";"
 fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
     match &lexer_tokens[0] {
@@ -465,6 +491,66 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                 &lexer_tokens,
             ))
         }
+        Token::Switch => {
+            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)
+                .context("Parsing a switch statement")?;
+            let (condition, lexer_tokens) =
+                parse_expression(lexer_tokens, 0).context("Parsing a switch statement")?;
+            let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
+                .context("Parsing a switch statement")?;
+            let (body, lexer_tokens) =
+                parse_statement(lexer_tokens).context("Parsing a switch statement")?;
+            Ok((
+                Statement::Switch {
+                    condition,
+                    body: Box::new(body),
+                    cases: vec![],
+                    label: None,
+                },
+                &lexer_tokens,
+            ))
+        }
+        Token::Case => {
+            let lexer_tokens = &lexer_tokens[1..];
+            if !matches!(&lexer_tokens[0], Token::Constant(..)) {
+                return Err(anyhow!(
+                    "Only supporting positive integer values for now. Missing support for constant-folding"
+                ));
+            }
+            let match_value: usize = match &lexer_tokens[0] {
+                Token::Constant(x) => *x,
+                _ => unreachable!("earlier check already guarantees this is a constant"),
+            };
+            let lexer_tokens = expect(Token::Colon, &lexer_tokens[1..])
+                .context("Parsing a switch-case statement")?;
+            let (follow_statement, lexer_tokens) =
+                parse_statement(lexer_tokens).context("Parsing a switch-case statement")?;
+            Ok((
+                Statement::Case {
+                    match_value,
+                    follow_statement: Box::new(follow_statement),
+                    break_label: None,
+                    label: format!("case_{}_", match_value),
+                },
+                &lexer_tokens,
+            ))
+        }
+        Token::Default => {
+            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens =
+                expect(Token::Colon, lexer_tokens).context("Parsing a switch-default statement")?;
+            let (follow_statement, lexer_tokens) =
+                parse_statement(lexer_tokens).context("Parsing a switch-default statement")?;
+            Ok((
+                Statement::Default {
+                    follow_statement: Box::new(follow_statement),
+                    break_label: None,
+                    label: String::from("default"),
+                },
+                &lexer_tokens,
+            ))
+        }
         _ => match &lexer_tokens[0..2] {
             [Token::Identifier(identifier), Token::Colon] => {
                 let (following_statement, lexer_tokens) =
@@ -561,7 +647,10 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         | Token::Continue
         | Token::Do
         | Token::While
-        | Token::For => None,
+        | Token::For
+        | Token::Switch
+        | Token::Case
+        | Token::Default => None,
     }
 }
 
@@ -619,7 +708,10 @@ fn parse_postfix_operator(lexer_tokens: &[Token]) -> Option<UnaryOperator> {
         | Token::Continue
         | Token::Do
         | Token::While
-        | Token::For => None,
+        | Token::For
+        | Token::Switch
+        | Token::Case
+        | Token::Default => None,
     }
 }
 
@@ -659,7 +751,7 @@ fn parse_primary(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
     }
 }
 
-// unary_exp> ::= <prefix_op> <unary_exp> | <primary>
+// unary_exp> ::= <unop> | <prefix_op> <unary_exp> | <primary>
 fn parse_unary_expression(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
     match &lexer_tokens[0] {
         Token::Hyphen

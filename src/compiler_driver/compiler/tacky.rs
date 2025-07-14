@@ -697,6 +697,75 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
 
             instructions
         }
+        parser::Statement::Switch {
+            condition,
+            body,
+            cases,
+            label,
+        } => {
+            let (mut instructions, condition_destination) = convert_expression(condition);
+            let condition_expression_result = make_temporary();
+            let condition_expression_result = Val::Var(condition_expression_result);
+            instructions.push(Instruction::Copy {
+                source: condition_destination,
+                destination: condition_expression_result.clone(),
+            });
+            let mut default_instruction: Option<Instruction> = None;
+            for case in cases {
+                let parser::LabelAndMatchValue {
+                    unique_label,
+                    match_value,
+                } = case;
+                match match_value {
+                    Some(value) => {
+                        let match_value_expression_result = Val::Constant(value);
+                        let destination = Val::Var(make_temporary());
+                        instructions.push(Instruction::Binary {
+                            binary_operator: BinaryOperator::Equal,
+                            source1: condition_expression_result.clone(),
+                            source2: match_value_expression_result.clone(),
+                            destination: destination.clone(),
+                        });
+                        instructions.push(Instruction::JumpIfNotZero {
+                            condition: destination,
+                            target: unique_label,
+                        })
+                    }
+                    None => {
+                        default_instruction = Some(Instruction::Jump {
+                            target: unique_label,
+                        })
+                    }
+                }
+            }
+            if let Some(instruction) = default_instruction {
+                instructions.push(instruction);
+            }
+            instructions.push(Instruction::Jump {
+                target: format!("break_{}", label.clone().unwrap()),
+            });
+            instructions.extend(convert_statement(*body));
+            instructions.push(Instruction::Label {
+                identifier: format!("break_{}", label.clone().unwrap()),
+            });
+            instructions
+        }
+        parser::Statement::Case {
+            follow_statement,
+            label,
+            ..
+        }
+        | parser::Statement::Default {
+            follow_statement,
+            label,
+            ..
+        } => {
+            let mut instructions: Vec<Instruction> = vec![];
+            instructions.push(Instruction::Label { identifier: label });
+            instructions.extend(convert_statement(*follow_statement));
+
+            instructions
+        }
         parser::Statement::Null => {
             vec![]
         }
