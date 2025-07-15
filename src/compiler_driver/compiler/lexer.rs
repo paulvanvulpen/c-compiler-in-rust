@@ -63,6 +63,7 @@ pub enum Token {
     Switch,
     Case,
     Default,
+    Comma,
 }
 
 lazy_static! {
@@ -226,6 +227,7 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
             "=" => (Some(Token::Equal), remainder),
             "?" => (Some(Token::QuestionMark), remainder),
             ":" => (Some(Token::Colon), remainder),
+            "," => (Some(Token::Comma), remainder),
             _ => (None, remainder),
         };
     }
