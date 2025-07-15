@@ -7,13 +7,16 @@ mod compiler_driver;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// The main source file to compile and emit an executable
-    #[arg(required_unless_present = "code_emission")]
-    source_file: Option<String>,
+    #[arg()]
+    source_files: Vec<String>,
 
-    /// an alternative mode to compile and emit an assembly file
-    #[arg(short = 'S', conflicts_with = "source_file")]
-    code_emission: Option<String>,
+    /// Compile only; do not assemble or link
+    #[arg(short = 'S')]
+    compile_only: bool,
+
+    /// Compile and assemble, but do not link.
+    #[arg(short = 'c')]
+    compile_and_assemble: bool,
 
     /// Run the lexer, but stop before parsing
     #[arg(long)]
@@ -41,6 +44,6 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let args = Args::parse();
-    compiler_driver::compile(&args)?;
+    compiler_driver::run(&args)?;
     Ok(())
 }
