@@ -990,7 +990,9 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         | Token::Switch
         | Token::Case
         | Token::Comma
-        | Token::Default => None,
+        | Token::Default
+        | Token::Static
+        | Token::Extern => None,
     }
 }
 
@@ -1052,7 +1054,9 @@ fn parse_postfix_operator(lexer_tokens: &[Token]) -> Option<UnaryOperator> {
         | Token::Switch
         | Token::Case
         | Token::Default
-        | Token::Comma => None,
+        | Token::Comma
+        | Token::Static
+        | Token::Extern => None,
     }
 }
 

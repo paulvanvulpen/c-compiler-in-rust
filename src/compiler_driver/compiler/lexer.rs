@@ -64,6 +64,8 @@ pub enum Token {
     Case,
     Default,
     Comma,
+    Static,
+    Extern,
 }
 
 lazy_static! {
@@ -111,6 +113,8 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
             "switch" => (Some(Token::Switch), remainder),
             "case" => (Some(Token::Case), remainder),
             "default" => (Some(Token::Default), remainder),
+            "static" => (Some(Token::Static), remainder),
+            "extern" => (Some(Token::Extern), remainder),
             _ => (Some(Token::Identifier(String::from(token_str))), remainder),
         };
     }
