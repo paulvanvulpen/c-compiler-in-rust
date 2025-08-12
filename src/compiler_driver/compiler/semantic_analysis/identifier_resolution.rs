@@ -5,46 +5,150 @@ use super::parser;
 use crate::compiler_driver::compiler::visualize::Visualizer;
 use anyhow::{Context, anyhow};
 
-fn resolve_declaration(
-    declaration: parser::Declaration,
-    variable_map: &mut HashMap<String, NameAndScope>,
-) -> anyhow::Result<parser::Declaration> {
-    let parser::Declaration::Declaration { identifier, init } = declaration;
-    if variable_map.contains_key(&identifier) && variable_map[&identifier].from_current_block {
-        return Err(anyhow!("Duplicate variable declaration: {}!", &identifier));
+fn resolve_local_variable_declaration(
+    variable_declaration: parser::VariableDeclaration,
+    identifier_map: &mut HashMap<String, NameAndScope>,
+) -> anyhow::Result<parser::VariableDeclaration> {
+    let parser::VariableDeclaration { identifier, init } = variable_declaration;
+    if identifier_map.contains_key(&identifier) && identifier_map[&identifier].from_current_scope {
+        return Err(anyhow!("Duplicate declaration: {}!", &identifier));
     }
     let unique_name = generator::make_temporary_from_identifier(&identifier);
-    variable_map.insert(
+    identifier_map.insert(
         identifier.clone(),
         NameAndScope {
             unique_name: unique_name.clone(),
-            from_current_block: true,
+            from_current_scope: true,
+            has_linkage: false,
         },
     );
 
     let mut updated_initialiser: Option<parser::Expression> = None;
     if let Some(init) = init {
-        updated_initialiser = Some(resolve_expression(init, variable_map)?);
+        updated_initialiser = Some(resolve_expression(init, identifier_map)?);
     }
 
-    Ok(parser::Declaration::Declaration {
+    Ok(parser::VariableDeclaration {
         identifier: unique_name,
         init: updated_initialiser,
     })
 }
 
+fn resolve_local_function_declaration(
+    function_declaration: parser::FunctionDeclaration,
+    identifier_map: &mut HashMap<String, NameAndScope>,
+) -> anyhow::Result<parser::FunctionDeclaration> {
+    let parser::FunctionDeclaration {
+        identifier, body, ..
+    } = &function_declaration;
+    if body.is_some() {
+        return Err(anyhow!(
+            "Function definitions found inside function scope {}!",
+            identifier
+        ));
+    }
+
+    resolve_function_declaration(function_declaration, identifier_map)
+}
+
+fn resolve_function_declaration(
+    function_declaration: parser::FunctionDeclaration,
+    identifier_map: &mut HashMap<String, NameAndScope>,
+) -> anyhow::Result<parser::FunctionDeclaration> {
+    let parser::FunctionDeclaration {
+        identifier,
+        parameters: params,
+        body,
+    } = function_declaration;
+    if identifier_map.contains_key(&identifier)
+        && identifier_map[&identifier].from_current_scope
+        && !identifier_map[&identifier].has_linkage
+    {
+        return Err(anyhow!("Duplicate declaration: {}!", &identifier));
+    }
+    identifier_map.insert(
+        identifier.clone(),
+        NameAndScope {
+            unique_name: identifier.clone(),
+            from_current_scope: true,
+            has_linkage: true,
+        },
+    );
+
+    let mut copy_of_identifier_map: HashMap<String, NameAndScope> = identifier_map.clone();
+    let params: Vec<String> = params
+        .into_iter()
+        .map(|p| {
+            resolve_parameter(p, &mut copy_of_identifier_map)
+                .context("resolving a function declaration")
+                .unwrap()
+        })
+        .collect();
+
+    Ok(parser::FunctionDeclaration {
+        identifier: identifier.clone(),
+        parameters: params,
+        body: match body {
+            Some(body) => Some(resolve_block(body, &mut copy_of_identifier_map)?),
+            None => None,
+        },
+    })
+}
+
+fn resolve_parameter(
+    identifier: String,
+    identifier_map: &mut HashMap<String, NameAndScope>,
+) -> anyhow::Result<String> {
+    if identifier_map.contains_key(&identifier) && identifier_map[&identifier].from_current_scope {
+        return Err(anyhow!("Duplicate declaration: {}!", &identifier));
+    }
+    let unique_name = generator::make_temporary_from_identifier(&identifier);
+    identifier_map.insert(
+        identifier.clone(),
+        NameAndScope {
+            unique_name: unique_name.clone(),
+            from_current_scope: true,
+            has_linkage: false,
+        },
+    );
+
+    Ok(unique_name)
+}
+
+fn resolve_declaration(
+    declaration: parser::Declaration,
+    identifier_map: &mut HashMap<String, NameAndScope>,
+) -> anyhow::Result<parser::Declaration> {
+    match declaration {
+        parser::Declaration::VariableDeclaration(variable_declaration) => {
+            Ok(parser::Declaration::VariableDeclaration(
+                resolve_local_variable_declaration(variable_declaration, identifier_map)
+                    .context("resolving a declaration")?,
+            ))
+        }
+        parser::Declaration::FunctionDeclaration(function_declaration) => {
+            Ok(parser::Declaration::FunctionDeclaration(
+                resolve_local_function_declaration(function_declaration, identifier_map)
+                    .context("resolving a declaration")?,
+            ))
+        }
+    }
+}
+
 fn resolve_for_init(
     for_init: parser::ForInit,
-    variable_map: &mut HashMap<String, NameAndScope>,
+    identifier_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::ForInit> {
     match for_init {
-        parser::ForInit::InitialDeclaration(declaration) => Ok(
-            parser::ForInit::InitialDeclaration(resolve_declaration(declaration, variable_map)?),
-        ),
+        parser::ForInit::InitialDeclaration(declaration) => {
+            Ok(parser::ForInit::InitialDeclaration(
+                resolve_local_variable_declaration(declaration, identifier_map)?,
+            ))
+        }
         parser::ForInit::InitialOptionalExpression(optional_expression) => {
             match optional_expression {
                 Some(expression) => Ok(parser::ForInit::InitialOptionalExpression(Some(
-                    resolve_expression(expression, variable_map)?,
+                    resolve_expression(expression, identifier_map)?,
                 ))),
                 None => Ok(parser::ForInit::InitialOptionalExpression(None)),
             }
@@ -54,31 +158,34 @@ fn resolve_for_init(
 
 fn resolve_statement(
     statement: parser::Statement,
-    variable_map: &mut HashMap<String, NameAndScope>,
+    identifier_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::Statement> {
     match statement {
         parser::Statement::Return(expression) => Ok(parser::Statement::Return(resolve_expression(
             expression,
-            variable_map,
+            identifier_map,
         )?)),
         parser::Statement::If {
             condition,
             then_statement,
             optional_else_statement,
         } => Ok(parser::Statement::If {
-            condition: resolve_expression(condition, variable_map)?,
-            then_statement: Box::new(resolve_statement(*then_statement, variable_map)?),
+            condition: resolve_expression(condition, identifier_map)?,
+            then_statement: Box::new(resolve_statement(*then_statement, identifier_map)?),
             optional_else_statement: if let Some(else_statement) = optional_else_statement {
-                Some(Box::new(resolve_statement(*else_statement, variable_map)?))
+                Some(Box::new(resolve_statement(
+                    *else_statement,
+                    identifier_map,
+                )?))
             } else {
                 None
             },
         }),
         parser::Statement::Compound(block) => {
-            let mut copy_of_variable_map: HashMap<String, NameAndScope> = variable_map.clone();
+            let mut copy_of_identifier_map: HashMap<String, NameAndScope> = identifier_map.clone();
             Ok(parser::Statement::Compound(resolve_block(
                 block,
-                &mut copy_of_variable_map,
+                &mut copy_of_identifier_map,
             )?))
         }
         parser::Statement::While {
@@ -86,10 +193,10 @@ fn resolve_statement(
             body,
             label,
         } => {
-            let condition = resolve_expression(condition, variable_map)
+            let condition = resolve_expression(condition, identifier_map)
                 .context("resolving a while statement")?;
             let body =
-                resolve_statement(*body, variable_map).context("resolving a while statement")?;
+                resolve_statement(*body, identifier_map).context("resolving a while statement")?;
             Ok(parser::Statement::While {
                 condition,
                 body: Box::new(body),
@@ -102,8 +209,8 @@ fn resolve_statement(
             label,
         } => {
             let body =
-                resolve_statement(*body, variable_map).context("resolving a while statement")?;
-            let condition = resolve_expression(condition, variable_map)
+                resolve_statement(*body, identifier_map).context("resolving a while statement")?;
+            let condition = resolve_expression(condition, identifier_map)
                 .context("resolving a while statement")?;
             Ok(parser::Statement::DoWhile {
                 body: Box::new(body),
@@ -118,18 +225,18 @@ fn resolve_statement(
             body,
             label,
         } => {
-            let mut copy_of_variable_map: HashMap<String, NameAndScope> = variable_map.clone();
-            let init = resolve_for_init(init, &mut copy_of_variable_map)
+            let mut copy_of_identifier_map: HashMap<String, NameAndScope> = identifier_map.clone();
+            let init = resolve_for_init(init, &mut copy_of_identifier_map)
                 .context("resolving a for statement")?;
             let condition = condition
-                .map(|c| resolve_expression(c, &mut copy_of_variable_map))
+                .map(|c| resolve_expression(c, &mut copy_of_identifier_map))
                 .transpose()
                 .context("resolving a for statement")?;
             let post = post
-                .map(|c| resolve_expression(c, &mut copy_of_variable_map))
+                .map(|c| resolve_expression(c, &mut copy_of_identifier_map))
                 .transpose()
                 .context("resolving a for statement")?;
-            let body = resolve_statement(*body, &mut copy_of_variable_map)
+            let body = resolve_statement(*body, &mut copy_of_identifier_map)
                 .context("resolving a while statement")?;
 
             Ok(parser::Statement::For {
@@ -146,10 +253,10 @@ fn resolve_statement(
             body,
             label,
         } => {
-            let condition = resolve_expression(condition, variable_map)
+            let condition = resolve_expression(condition, identifier_map)
                 .context("resolving a switch statement")?;
             let body =
-                resolve_statement(*body, variable_map).context("resolving a switch statement")?;
+                resolve_statement(*body, identifier_map).context("resolving a switch statement")?;
             Ok(parser::Statement::Switch {
                 condition,
                 cases,
@@ -163,7 +270,7 @@ fn resolve_statement(
             break_label,
             label,
         } => {
-            let follow_statement = resolve_statement(*follow_statement, variable_map)
+            let follow_statement = resolve_statement(*follow_statement, identifier_map)
                 .context("resolving a switch-case statement")?;
             Ok(parser::Statement::Case {
                 match_value,
@@ -177,7 +284,7 @@ fn resolve_statement(
             break_label,
             label,
         } => {
-            let follow_statement = resolve_statement(*follow_statement, variable_map)
+            let follow_statement = resolve_statement(*follow_statement, identifier_map)
                 .context("resolving a switch-default statement")?;
             Ok(parser::Statement::Default {
                 follow_statement: Box::new(follow_statement),
@@ -186,13 +293,13 @@ fn resolve_statement(
             })
         }
         parser::Statement::Expression(expression) => Ok(parser::Statement::Expression(
-            resolve_expression(expression, variable_map)
+            resolve_expression(expression, identifier_map)
                 .context("resolving an expression statement")?,
         )),
         parser::Statement::Label(label, following_statement) => Ok(parser::Statement::Label(
             label,
             Box::new(
-                resolve_statement(*following_statement, variable_map)
+                resolve_statement(*following_statement, identifier_map)
                     .context("resolving a label statement")?,
             ),
         )),
@@ -206,7 +313,7 @@ fn resolve_statement(
 
 fn resolve_expression(
     expression: parser::Expression,
-    variable_map: &mut HashMap<String, NameAndScope>,
+    identifier_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::Expression> {
     match expression {
         parser::Expression::Assignment(left, right) => {
@@ -214,17 +321,17 @@ fn resolve_expression(
                 return Err(anyhow!("invalid lvalue {}", (*left).visualize(0)));
             }
             Ok(parser::Expression::Assignment(
-                Box::new(resolve_expression(*left, variable_map)?),
-                Box::new(resolve_expression(*right, variable_map)?),
+                Box::new(resolve_expression(*left, identifier_map)?),
+                Box::new(resolve_expression(*right, identifier_map)?),
             ))
         }
         parser::Expression::Var { identifier } => {
-            if variable_map.contains_key(&identifier) {
+            if identifier_map.contains_key(&identifier) {
                 Ok(parser::Expression::Var {
-                    identifier: variable_map[&identifier].unique_name.clone(),
+                    identifier: identifier_map[&identifier].unique_name.clone(),
                 })
             } else {
-                Err(anyhow!("undeclared identifier {:?}", identifier))
+                Err(anyhow!("undeclared variable identifier {:?}", identifier))
             }
         }
         parser::Expression::Constant(..) => Ok(expression),
@@ -275,8 +382,8 @@ fn resolve_expression(
             }
             Ok(parser::Expression::BinaryOperation {
                 binary_operator,
-                left_operand: Box::new(resolve_expression(*left_operand, variable_map)?),
-                right_operand: Box::new(resolve_expression(*right_operand, variable_map)?),
+                left_operand: Box::new(resolve_expression(*left_operand, identifier_map)?),
+                right_operand: Box::new(resolve_expression(*right_operand, identifier_map)?),
             })
         }
         parser::Expression::Unary(unary_operator, expression) => match unary_operator {
@@ -284,7 +391,7 @@ fn resolve_expression(
             | parser::UnaryOperator::Not
             | parser::UnaryOperator::Complement => Ok(parser::Expression::Unary(
                 unary_operator,
-                Box::new(resolve_expression(*expression, variable_map)?),
+                Box::new(resolve_expression(*expression, identifier_map)?),
             )),
             parser::UnaryOperator::PrefixDecrement
             | parser::UnaryOperator::PostfixDecrement
@@ -295,30 +402,50 @@ fn resolve_expression(
                 }
                 Ok(parser::Expression::Unary(
                     unary_operator,
-                    Box::new(resolve_expression(*expression, variable_map)?),
+                    Box::new(resolve_expression(*expression, identifier_map)?),
                 ))
             }
         },
         parser::Expression::Conditional(exp1, exp2, exp3) => Ok(parser::Expression::Conditional(
-            Box::new(resolve_expression(*exp1, variable_map)?),
-            Box::new(resolve_expression(*exp2, variable_map)?),
-            Box::new(resolve_expression(*exp3, variable_map)?),
+            Box::new(resolve_expression(*exp1, identifier_map)?),
+            Box::new(resolve_expression(*exp2, identifier_map)?),
+            Box::new(resolve_expression(*exp3, identifier_map)?),
         )),
+        parser::Expression::FunctionCall {
+            identifier,
+            arguments,
+        } => {
+            if identifier_map.contains_key(&identifier) {
+                Ok(parser::Expression::FunctionCall {
+                    identifier: identifier_map[&identifier].unique_name.clone(),
+                    arguments: arguments
+                        .into_iter()
+                        .map(|arg| {
+                            resolve_expression(arg, identifier_map)
+                                .context("resolving an expression")
+                                .unwrap()
+                        })
+                        .collect(),
+                })
+            } else {
+                Err(anyhow!("undeclared function identifier {:?}", identifier))
+            }
+        }
     }
 }
 
 fn resolve_block_item(
     block_item: parser::BlockItem,
-    variable_map: &mut HashMap<String, NameAndScope>,
+    identifier_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::BlockItem> {
     match block_item {
         parser::BlockItem::Statement(statement) => {
-            let resolved_statement = resolve_statement(statement, variable_map)
+            let resolved_statement = resolve_statement(statement, identifier_map)
                 .context("analysed statement block item")?;
             Ok(parser::BlockItem::Statement(resolved_statement))
         }
         parser::BlockItem::Declaration(declaration) => {
-            let resolved_declaration = resolve_declaration(declaration, variable_map)
+            let resolved_declaration = resolve_declaration(declaration, identifier_map)
                 .context("analysed declaration block item")?;
             Ok(parser::BlockItem::Declaration(resolved_declaration))
         }
@@ -327,12 +454,12 @@ fn resolve_block_item(
 
 fn resolve_block(
     block: parser::Block,
-    variable_map: &mut HashMap<String, NameAndScope>,
+    identifier_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::Block> {
     let parser::Block::Block(mut block) = block;
     for block_item in &mut block {
         let original = std::mem::take(block_item);
-        *block_item = resolve_block_item(original, variable_map).context("resolving_block")?;
+        *block_item = resolve_block_item(original, identifier_map).context("resolving_block")?;
     }
 
     Ok(parser::Block::Block(block))
@@ -340,7 +467,8 @@ fn resolve_block(
 
 struct NameAndScope {
     unique_name: String,
-    from_current_block: bool,
+    from_current_scope: bool,
+    has_linkage: bool,
 }
 
 impl Clone for NameAndScope {
@@ -348,14 +476,19 @@ impl Clone for NameAndScope {
     fn clone(&self) -> Self {
         NameAndScope {
             unique_name: self.unique_name.clone(),
-            from_current_block: false,
+            from_current_scope: false,
+            has_linkage: self.has_linkage,
         }
     }
 }
 
-pub fn analyse(function_name: &str, function_body: parser::Block) -> anyhow::Result<parser::Block> {
-    let mut variable_map: HashMap<String, NameAndScope> = HashMap::new();
+pub fn analyse(
+    function_declarations: Vec<parser::FunctionDeclaration>,
+) -> Vec<parser::FunctionDeclaration> {
+    let mut identifier_map: HashMap<String, NameAndScope> = HashMap::new();
 
-    resolve_block(function_body, &mut variable_map)
-        .with_context(|| format!("analysing function body of: {}", function_name))
+    function_declarations
+        .into_iter()
+        .map(|f| resolve_function_declaration(f, &mut identifier_map).unwrap())
+        .collect()
 }

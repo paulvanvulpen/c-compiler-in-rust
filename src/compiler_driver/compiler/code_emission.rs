@@ -1,42 +1,59 @@
 use super::assembly_generator;
+use crate::compiler_driver::compiler::symbol_table::SymbolState;
+use std::collections::HashMap;
 use std::io::Write;
 
-fn write_assembler_ast(assembler_ast: assembly_generator::AssemblyAbstractSyntaxTree) -> String {
+fn write_assembler_ast(
+    assembler_ast: assembly_generator::AssemblyAbstractSyntaxTree,
+    symbol_table: &HashMap<String, SymbolState>,
+) -> String {
     match assembler_ast {
         assembly_generator::AssemblyAbstractSyntaxTree::Program(program) => {
-            String::from(write_program(program))
+            String::from(write_program(program, symbol_table))
         }
     }
 }
-fn write_program(program: assembly_generator::Program) -> String {
+fn write_program(
+    program: assembly_generator::Program,
+    symbol_table: &HashMap<String, SymbolState>,
+) -> String {
     match program {
-        assembly_generator::Program::Program(function_definition) => String::from(format!(
+        assembly_generator::Program::Program(function_definitions) => format!(
             "{}\n\
-			.section .note.GNU-stack,\"\",@progbits\n",
-            write_function(function_definition)
-        )),
+            .section .note.GNU-stack,\"\",@progbits\n",
+            function_definitions
+                .into_iter()
+                .map(|f| write_function(f, symbol_table))
+                .collect::<Vec<String>>()
+                .join("\n")
+        ),
     }
 }
-fn write_function(function_definition: assembly_generator::FunctionDefinition) -> String {
+
+fn write_function(
+    function_definition: assembly_generator::FunctionDefinition,
+    symbol_table: &HashMap<String, SymbolState>,
+) -> String {
     let prefix = "    ";
     match function_definition {
         assembly_generator::FunctionDefinition::Function {
             identifier,
             instructions,
+            ..
         } => {
             let instructions_str = instructions
                 .into_iter()
-                .map(|instruction| write_instruction(instruction))
+                .map(|instruction| write_instruction(instruction, symbol_table))
                 .collect::<Vec<String>>()
                 .join(format!("{prefix}").as_str());
-            String::from(format!(
+            format!(
                 "{prefix}.globl {identifier}\n\
                 {identifier}:\n\
                 {prefix}pushq	%rbp\n\
                 {prefix}movq	%rsp, %rbp\n\
                 {prefix}{}",
                 instructions_str
-            ))
+            )
         }
     }
 }
@@ -65,7 +82,10 @@ fn write_binary_operator(binary_operator: assembly_generator::BinaryOperator) ->
     }
 }
 
-fn write_instruction(instruction: assembly_generator::Instruction) -> String {
+fn write_instruction(
+    instruction: assembly_generator::Instruction,
+    symbol_table: &HashMap<String, SymbolState>,
+) -> String {
     let prefix = "    ";
     match instruction {
         assembly_generator::Instruction::Mov(src, dst) => {
@@ -113,6 +133,17 @@ fn write_instruction(instruction: assembly_generator::Instruction) -> String {
         }
         assembly_generator::Instruction::Cdq => String::from("cdq\n"),
         assembly_generator::Instruction::AllocateStack(size) => format!("subq\t${size}, %rsp\n"),
+        assembly_generator::Instruction::DeallocateStack(size) => format!("addq\t${size}, %rsp\n"),
+        assembly_generator::Instruction::Push(operand) => {
+            format!("pushq\t{}\n", write_operand(operand, 8))
+        }
+        assembly_generator::Instruction::Call(identifier) => {
+            let SymbolState { is_defined, .. } = &symbol_table[&identifier];
+            format!(
+                "call\t{identifier}{}\n",
+                if !is_defined { "@PLT" } else { "" },
+            )
+        }
         assembly_generator::Instruction::Ret => format!(
             "movq\t%rbp, %rsp\n\
             {prefix}popq\t%rbp\n\
@@ -160,26 +191,55 @@ fn write_register(register: assembly_generator::Register, byte_count: u8) -> Str
         assembly_generator::Register::AX => match byte_count {
             1 => String::from("%al"),
             4 => String::from("%eax"),
+            8 => String::from("%rax"),
             _ => panic!("unknown register"),
         },
         assembly_generator::Register::CX => match byte_count {
             1 => String::from("%cl"),
             4 => String::from("%ecx"),
+            8 => String::from("%rcx"),
             _ => panic!("unknown register"),
         },
         assembly_generator::Register::DX => match byte_count {
             1 => String::from("%dl"),
             4 => String::from("%edx"),
+            8 => String::from("%rdx"),
+            _ => panic!("unknown register"),
+        },
+        assembly_generator::Register::DI => match byte_count {
+            1 => String::from("%dil"),
+            4 => String::from("%edi"),
+            8 => String::from("%rdi"),
+            _ => panic!("unknown register"),
+        },
+        assembly_generator::Register::SI => match byte_count {
+            1 => String::from("%sil"),
+            4 => String::from("%esi"),
+            8 => String::from("%rsi"),
+            _ => panic!("unknown register"),
+        },
+        assembly_generator::Register::R8 => match byte_count {
+            1 => String::from("%r8b"),
+            4 => String::from("%r8d"),
+            8 => String::from("%r8"),
+            _ => panic!("unknown register"),
+        },
+        assembly_generator::Register::R9 => match byte_count {
+            1 => String::from("%r9b"),
+            4 => String::from("%r9d"),
+            8 => String::from("%r9"),
             _ => panic!("unknown register"),
         },
         assembly_generator::Register::R10 => match byte_count {
             1 => String::from("%r10b"),
             4 => String::from("%r10d"),
+            8 => String::from("%r10"),
             _ => panic!("unknown register"),
         },
         assembly_generator::Register::R11 => match byte_count {
             1 => String::from("%r11b"),
             4 => String::from("%r11d"),
+            8 => String::from("%r11"),
             _ => panic!("unknown register"),
         },
     }
@@ -198,9 +258,10 @@ fn write_condition_code(condition_code: assembly_generator::ConditionCode) -> St
 
 pub fn run_code_emission(
     assembly_ast: assembly_generator::AssemblyAbstractSyntaxTree,
+    symbol_table: &HashMap<String, SymbolState>,
     input_file_path: &std::path::Path,
 ) -> anyhow::Result<()> {
     let mut assembly_file = std::fs::File::create(input_file_path.with_extension("s"))?;
-    assembly_file.write(write_assembler_ast(assembly_ast).as_bytes())?;
+    assembly_file.write(write_assembler_ast(assembly_ast, symbol_table).as_bytes())?;
     Ok(())
 }

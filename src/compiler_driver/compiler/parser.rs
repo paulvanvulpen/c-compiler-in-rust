@@ -5,8 +5,13 @@ use std::mem::discriminant;
 mod visualize;
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
-// program = Program(function_definition)
-// function_definition = Function(identifier name, block)
+// program = Program(function_definition*)
+// declaration = FuncDecl(function_declaration) | VarDecl(variable_declaration)
+// variable_declaration = (identifier name, exp? init)
+// function_declaration = (identifier name, identifier* params, block? body)
+// block_item = S(statement) | D(declaration)
+// block = Block(block_item*)
+// for_init = InitDecl(variable_declaration), InitExp(exp?)
 // statement = Return(exp)
 //              | If(exp condition, statement then, statement? else)
 //              | Expression(exp)
@@ -22,10 +27,13 @@ mod visualize;
 //              | Case(exp match_value, identifier label, statement? follow_statement)
 //              | Default(identifier label, statement? follow_statement)
 //              | Null
-// declaration = Declaration(identifier name, exp? init)
-// for_init = InitDecl(declaration), InitExp(exp?)
-// block_item = S(statement) | D(declaration)
-// exp = Constant(int) | Var(identifier) | Unary(unary_operator, exp) | Binary(binary_operator, exp, exp) | Assignment(exp, exp)
+// exp = Constant(int)
+//        | Var(identifier)
+//        | Unary(unary_operator, exp)
+//        | Binary(binary_operator, exp, exp)
+//        | Assignment(exp, exp)
+//        | Conditional(exp condition, exp, exp)
+//        | FunctionCall(identifier, exp* args)
 // unary_operator = Complement | Negate | Not | PrefixDecrement | PostfixDecrement | PrefixIncrement | PostfixIncrement
 // binary_operator = Add | Subtract | Multiply | Divide | Remainder | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual
 
@@ -34,15 +42,33 @@ pub enum AbstractSyntaxTree {
 }
 
 pub enum Program {
-    Program(FunctionDefinition),
+    Program(Vec<FunctionDeclaration>),
 }
 
-pub enum FunctionDefinition {
-    Function { identifier: String, body: Block },
+pub struct FunctionDeclaration {
+    pub identifier: String,
+    pub parameters: Vec<String>,
+    pub body: Option<Block>,
+}
+
+pub struct VariableDeclaration {
+    pub identifier: String,
+    pub init: Option<Expression>,
+}
+
+pub enum Declaration {
+    VariableDeclaration(VariableDeclaration),
+    FunctionDeclaration(FunctionDeclaration),
 }
 
 pub enum Block {
     Block(Vec<BlockItem>),
+}
+
+impl Default for Block {
+    fn default() -> Self {
+        Block::Block(vec![])
+    }
 }
 
 pub enum BlockItem {
@@ -56,25 +82,9 @@ impl Default for BlockItem {
     }
 }
 
-pub enum Declaration {
-    Declaration {
-        identifier: String,
-        init: Option<Expression>,
-    },
-}
-
 pub struct LabelAndMatchValue {
     pub unique_label: String,
     pub match_value: Option<usize>,
-}
-
-impl LabelAndMatchValue {
-    pub fn new(unique_label: String, match_value: Option<usize>) -> Self {
-        Self {
-            unique_label,
-            match_value,
-        }
-    }
 }
 
 #[derive(Default)]
@@ -134,7 +144,7 @@ pub enum Statement {
 }
 
 pub enum ForInit {
-    InitialDeclaration(Declaration),
+    InitialDeclaration(VariableDeclaration),
     InitialOptionalExpression(Option<Expression>),
 }
 
@@ -151,6 +161,10 @@ pub enum Expression {
     },
     Assignment(Box<Expression>, Box<Expression>),
     Conditional(Box<Expression>, Box<Expression>, Box<Expression>),
+    FunctionCall {
+        identifier: String,
+        arguments: Vec<Expression>,
+    },
 }
 
 impl Default for Expression {
@@ -234,95 +248,218 @@ impl BinaryOperator {
     }
 }
 
-// <program> ::= <function>
-fn parse_program(lexer_tokens: &[Token]) -> Result<Program> {
-    match parse_function(lexer_tokens) {
-        Ok(function_definition) => Ok(Program::Program(function_definition)),
-        Err(e) => Err(e),
+// <program> ::= { <function_declaration> }
+fn parse_program(mut lexer_tokens: Vec<Token>) -> Result<Program> {
+    if lexer_tokens.is_empty() {
+        return Err(anyhow!("failed to parse program, no tokens found"));
+    }
+
+    let mut function_declarations: Vec<FunctionDeclaration> = vec![];
+    let mut lexer_tokens = lexer_tokens.as_mut_slice();
+    while !lexer_tokens.is_empty() {
+        let function_declaration;
+        (function_declaration, lexer_tokens) =
+            parse_function_declaration(lexer_tokens).context("parsing a program")?;
+        function_declarations.push(function_declaration);
+    }
+
+    Ok(Program::Program(function_declarations))
+}
+
+// <declaration> ::= <variable-declaration> | <function-declaration>
+fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [Token])> {
+    match &lexer_tokens[2] {
+        Token::OpenParenthesis => {
+            let (function_declaration, lexer_tokens) =
+                parse_function_declaration(lexer_tokens).context("parsing a declaration")?;
+            Ok((
+                Declaration::FunctionDeclaration(function_declaration),
+                lexer_tokens,
+            ))
+        }
+        _ => {
+            let (variable_declaration, lexer_tokens) =
+                parse_variable_declaration(lexer_tokens).context("parsing a declaration")?;
+            Ok((
+                Declaration::VariableDeclaration(variable_declaration),
+                lexer_tokens,
+            ))
+        }
     }
 }
 
-// <function> ::= "int" <identifier> "(" "void" ")" <block>
-fn parse_function(lexer_tokens: &[Token]) -> Result<FunctionDefinition> {
+// <variable-declaration> ::= ":int" <identifier> [ "=" <exp> ] ";"
+fn parse_variable_declaration(
+    lexer_tokens: &mut [Token],
+) -> Result<(VariableDeclaration, &mut [Token])> {
+    let lexer_tokens = expect(Token::Int, lexer_tokens)?;
+    let (identifier, lexer_tokens) = parse_identifier(lexer_tokens)?;
+    match &lexer_tokens[0] {
+        Token::Equal => {
+            let lexer_tokens = &mut lexer_tokens[1..];
+            let (expression, lexer_tokens) =
+                parse_expression(lexer_tokens, 0).context("parsing a variable declaration")?;
+            let lexer_tokens =
+                expect(Token::Semicolon, lexer_tokens).context("parsing a variable declaration")?;
+            Ok((
+                VariableDeclaration {
+                    identifier,
+                    init: Some(expression),
+                },
+                lexer_tokens,
+            ))
+        }
+        Token::Semicolon => {
+            let lexer_tokens = &mut lexer_tokens[1..];
+            Ok((
+                VariableDeclaration {
+                    identifier,
+                    init: None,
+                },
+                lexer_tokens,
+            ))
+        }
+        _ => Err(anyhow!(
+            "Syntax error, found token {:?} while parsing a variable declaration",
+            &lexer_tokens[0]
+        )),
+    }
+}
+
+// <function_declaration> ::= "int" <identifier> "(" <param-list> ")" ( <block> | ";")
+fn parse_function_declaration(
+    lexer_tokens: &mut [Token],
+) -> Result<(FunctionDeclaration, &mut [Token])> {
     let lexer_tokens = expect(Token::Int, lexer_tokens).context("Parsing a function")?;
     let (identifier, lexer_tokens) =
         parse_identifier(lexer_tokens).context("Parsing a function")?;
     let lexer_tokens =
         expect(Token::OpenParenthesis, lexer_tokens).context("Parsing a function")?;
-    let lexer_tokens = expect(Token::Void, lexer_tokens).context("Parsing a function")?;
+    let (parameters, lexer_tokens) =
+        parse_param_list(lexer_tokens).context("Parsing a function")?;
     let lexer_tokens =
         expect(Token::CloseParenthesis, lexer_tokens).context("Parsing a function")?;
-    let (body, lexer_tokens) = parse_block(lexer_tokens).context("Parsing a function")?;
 
-    match lexer_tokens {
-        t if t.is_empty() => Ok(FunctionDefinition::Function { identifier, body }),
-        _ => Err(fail()),
+    match &mut lexer_tokens[0] {
+        Token::Semicolon => Ok((
+            FunctionDeclaration {
+                identifier,
+                parameters,
+                body: None,
+            },
+            &mut lexer_tokens[1..],
+        )),
+        _ => {
+            let (body, lexer_tokens) = parse_block(lexer_tokens).context("Parsing a function")?;
+            Ok((
+                FunctionDeclaration {
+                    identifier,
+                    parameters,
+                    body: Some(body),
+                },
+                lexer_tokens,
+            ))
+        }
     }
 }
 
-// <identifier> ::= ? An identifier token ?
-fn parse_identifier(lexer_tokens: &[Token]) -> Result<(String, &[Token])> {
+// <param-list> ::= "void" | "int" <identifier> { "," "int" <identifier> }
+fn parse_param_list(lexer_tokens: &mut [Token]) -> Result<(Vec<String>, &mut [Token])> {
+    let mut params: Vec<String> = vec![];
+    let mut lexer_tokens = lexer_tokens;
     match &lexer_tokens[0] {
-        Token::Identifier(identifier) => Ok((identifier.clone(), &lexer_tokens[1..])),
-        _ => Err(fail()),
+        Token::Void => {
+            lexer_tokens = &mut lexer_tokens[1..];
+        }
+        Token::Int => loop {
+            lexer_tokens = expect(Token::Int, lexer_tokens).context("Parsing a parameter list")?;
+            let identifier;
+            (identifier, lexer_tokens) =
+                parse_identifier(lexer_tokens).context("Parsing a parameter list")?;
+            params.push(identifier);
+            if !matches!(lexer_tokens[0], Token::Comma) {
+                break;
+            }
+            lexer_tokens = &mut lexer_tokens[1..];
+        },
+        _ => {
+            return Err(anyhow!(
+                "Syntax error, found token {:?} while parsing a parameter list",
+                &lexer_tokens[0]
+            ));
+        }
     }
+
+    Ok((params, lexer_tokens))
 }
 
 // <block> ::= "{" { <block_item> } "}"
-fn parse_block(lexer_tokens: &[Token]) -> Result<(Block, &[Token])> {
+fn parse_block(lexer_tokens: &mut [Token]) -> Result<(Block, &mut [Token])> {
     let mut lexer_tokens = expect(Token::OpenBrace, lexer_tokens)?;
     let mut block = vec![];
 
     while !matches!(&lexer_tokens[0], Token::CloseBrace) {
         let block_item;
         (block_item, lexer_tokens) =
-            parse_block_item(&lexer_tokens).context("Parsing a compound statement")?;
+            parse_block_item(lexer_tokens).context("Parsing a compound statement")?;
         block.push(block_item);
     }
 
-    Ok((Block::Block(block), &lexer_tokens[1..]))
+    Ok((Block::Block(block), &mut lexer_tokens[1..]))
 }
 
 // <block-item> ::= <statement> | <declaration>
-fn parse_block_item(lexer_tokens: &[Token]) -> Result<(BlockItem, &[Token])> {
+fn parse_block_item(lexer_tokens: &mut [Token]) -> Result<(BlockItem, &mut [Token])> {
     match &lexer_tokens[0] {
         Token::Int => {
             let (declaration, lexer_tokens) =
-                parse_declaration(&lexer_tokens).context("Parsing a block item declaration")?;
-            Ok((BlockItem::Declaration(declaration), &lexer_tokens))
+                parse_declaration(lexer_tokens).context("Parsing a block item declaration")?;
+            Ok((BlockItem::Declaration(declaration), lexer_tokens))
         }
         _ => {
             let (statement, lexer_tokens) =
-                parse_statement(&lexer_tokens).context("Parsing a block item statement")?;
-            Ok((BlockItem::Statement(statement), &lexer_tokens))
+                parse_statement(lexer_tokens).context("Parsing a block item statement")?;
+            Ok((BlockItem::Statement(statement), lexer_tokens))
         }
     }
 }
 
-// <declaration> ::= "int" <identifier> [ "=" <exp> ]
-fn parse_declaration(lexer_tokens: &[Token]) -> Result<(Declaration, &[Token])> {
-    let lexer_tokens = expect(Token::Int, lexer_tokens)?;
-    let (identifier, lexer_tokens) = parse_identifier(lexer_tokens)?;
-    if !matches!(lexer_tokens[0], Token::Semicolon) {
-        let lexer_tokens = expect(Token::Equal, lexer_tokens)?;
-        let (expression, lexer_tokens) = parse_expression(lexer_tokens, 0)?;
-        let lexer_tokens = expect(Token::Semicolon, lexer_tokens)?;
-        Ok((
-            Declaration::Declaration {
-                identifier,
-                init: Some(expression),
-            },
-            lexer_tokens,
-        ))
-    } else {
-        let lexer_tokens = expect(Token::Semicolon, lexer_tokens)?;
-        Ok((
-            Declaration::Declaration {
-                identifier,
-                init: None,
-            },
-            lexer_tokens,
-        ))
+// <for-init> ::= <variable-declaration> | [ <exp> ] ";"
+fn parse_for_init(lexer_tokens: &mut [Token]) -> Result<(ForInit, &mut [Token])> {
+    match &lexer_tokens[0] {
+        Token::Int => {
+            let (variable_declaration, lexer_tokens) =
+                parse_variable_declaration(lexer_tokens).context("Parsing a for_init statement")?;
+            Ok((
+                ForInit::InitialDeclaration(variable_declaration),
+                lexer_tokens,
+            ))
+        }
+        Token::Semicolon => Ok((
+            ForInit::InitialOptionalExpression(None),
+            &mut lexer_tokens[1..],
+        )),
+        _ => {
+            let (expression, lexer_tokens) =
+                parse_expression(lexer_tokens, 0).context("Parsing a for_init statement")?;
+            let lexer_tokens =
+                expect(Token::Semicolon, lexer_tokens).context("Parsing a for_init statement")?;
+            Ok((
+                ForInit::InitialOptionalExpression(Some(expression)),
+                lexer_tokens,
+            ))
+        }
+    }
+}
+
+// <identifier> ::= ? An identifier token ?
+fn parse_identifier(lexer_tokens: &mut [Token]) -> Result<(String, &mut [Token])> {
+    match &mut lexer_tokens[0] {
+        Token::Identifier(identifier) => {
+            let identifier = std::mem::take(identifier);
+            Ok((identifier, &mut lexer_tokens[1..]))
+        }
+        _ => Err(fail()),
     }
 }
 
@@ -341,10 +478,10 @@ fn parse_declaration(lexer_tokens: &[Token]) -> Result<(Declaration, &[Token])> 
 //      | "case" <const_exp> ":" [ <statement> ]
 //      | "default" ":" [ <statement> ]
 //      | ";"
-fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
+fn parse_statement(lexer_tokens: &mut [Token]) -> Result<(Statement, &mut [Token])> {
     match &lexer_tokens[0] {
         Token::Return => {
-            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = &mut lexer_tokens[1..];
             let (expression, lexer_tokens) =
                 parse_expression(lexer_tokens, 0).context("Parsing a return statement")?;
             let lexer_tokens =
@@ -352,7 +489,7 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
             Ok((Statement::Return(expression), lexer_tokens))
         }
         Token::If => {
-            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = &mut lexer_tokens[1..];
             let lexer_tokens =
                 expect(Token::OpenParenthesis, lexer_tokens).context("Parsing an if statement")?;
             let (condition, lexer_tokens) = parse_expression(lexer_tokens, 0)?;
@@ -362,7 +499,7 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                 parse_statement(lexer_tokens).context("Parsing an if statement")?;
             match lexer_tokens[0] {
                 Token::Else => {
-                    let lexer_tokens = &lexer_tokens[1..];
+                    let lexer_tokens = &mut lexer_tokens[1..];
                     let (else_statement, lexer_tokens) =
                         parse_statement(lexer_tokens).context("Parsing an else statement")?;
                     Ok((
@@ -385,33 +522,33 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
             }
         }
         Token::Goto => {
-            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = &mut lexer_tokens[1..];
             let (identifier, lexer_tokens) =
                 parse_identifier(lexer_tokens).context("Parsing a goto statement")?;
             let lexer_tokens =
                 expect(Token::Semicolon, lexer_tokens).context("Parsing a goto statement")?;
-            Ok((Statement::Goto(identifier), &lexer_tokens))
+            Ok((Statement::Goto(identifier), lexer_tokens))
         }
-        Token::Semicolon => Ok((Statement::Null, &lexer_tokens[1..])),
+        Token::Semicolon => Ok((Statement::Null, &mut lexer_tokens[1..])),
         Token::OpenBrace => {
             let (block, lexer_tokens) =
                 parse_block(lexer_tokens).context("Parsing a compound statement")?;
-            Ok((Statement::Compound(block), &lexer_tokens))
+            Ok((Statement::Compound(block), lexer_tokens))
         }
         Token::Break => {
-            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = &mut lexer_tokens[1..];
             let lexer_tokens =
                 expect(Token::Semicolon, lexer_tokens).context("Parsing a break statement")?;
-            Ok((Statement::Break { label: None }, &lexer_tokens))
+            Ok((Statement::Break { label: None }, lexer_tokens))
         }
         Token::Continue => {
-            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = &mut lexer_tokens[1..];
             let lexer_tokens =
                 expect(Token::Semicolon, lexer_tokens).context("Parsing a continue statement")?;
-            Ok((Statement::Continue { label: None }, &lexer_tokens))
+            Ok((Statement::Continue { label: None }, lexer_tokens))
         }
         Token::While => {
-            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = &mut lexer_tokens[1..];
             let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)
                 .context("Parsing a while statement")?;
             let (condition, lexer_tokens) =
@@ -426,11 +563,11 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                     body: Box::new(body),
                     label: None,
                 },
-                &lexer_tokens,
+                lexer_tokens,
             ))
         }
         Token::Do => {
-            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = &mut lexer_tokens[1..];
             let (body, lexer_tokens) =
                 parse_statement(lexer_tokens).context("Parsing a do-while statement")?;
             let lexer_tokens =
@@ -449,17 +586,17 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                     condition,
                     label: None,
                 },
-                &lexer_tokens,
+                lexer_tokens,
             ))
         }
         Token::For => {
-            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = &mut lexer_tokens[1..];
             let lexer_tokens =
                 expect(Token::OpenParenthesis, lexer_tokens).context("Parsing a for statement")?;
             let (init, lexer_tokens) =
                 parse_for_init(lexer_tokens).context("Parsing a for statement")?;
             let (condition, lexer_tokens) = match &lexer_tokens[0] {
-                Token::Semicolon => (None, &lexer_tokens[1..]),
+                Token::Semicolon => (None, &mut lexer_tokens[1..]),
                 _ => {
                     let (expression, lexer_tokens) =
                         parse_expression(lexer_tokens, 0).context("Parsing a for statement")?;
@@ -469,7 +606,7 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                 }
             };
             let (post, lexer_tokens) = match &lexer_tokens[0] {
-                Token::CloseParenthesis => (None, &lexer_tokens[1..]),
+                Token::CloseParenthesis => (None, &mut lexer_tokens[1..]),
                 _ => {
                     let (expression, lexer_tokens) =
                         parse_expression(lexer_tokens, 0).context("Parsing a for statement")?;
@@ -488,11 +625,11 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                     body: Box::new(body),
                     label: None,
                 },
-                &lexer_tokens,
+                lexer_tokens,
             ))
         }
         Token::Switch => {
-            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = &mut lexer_tokens[1..];
             let lexer_tokens = expect(Token::OpenParenthesis, lexer_tokens)
                 .context("Parsing a switch statement")?;
             let (condition, lexer_tokens) =
@@ -508,11 +645,11 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                     cases: vec![],
                     label: None,
                 },
-                &lexer_tokens,
+                lexer_tokens,
             ))
         }
         Token::Case => {
-            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = &mut lexer_tokens[1..];
             if !matches!(&lexer_tokens[0], Token::Constant(..)) {
                 return Err(anyhow!(
                     "Only supporting positive integer values for now. Missing support for constant-folding"
@@ -522,7 +659,7 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                 Token::Constant(x) => *x,
                 _ => unreachable!("earlier check already guarantees this is a constant"),
             };
-            let lexer_tokens = expect(Token::Colon, &lexer_tokens[1..])
+            let lexer_tokens = expect(Token::Colon, &mut lexer_tokens[1..])
                 .context("Parsing a switch-case statement")?;
             let (follow_statement, lexer_tokens) =
                 parse_statement(lexer_tokens).context("Parsing a switch-case statement")?;
@@ -533,11 +670,11 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                     break_label: None,
                     label: format!("case_{}_", match_value),
                 },
-                &lexer_tokens,
+                lexer_tokens,
             ))
         }
         Token::Default => {
-            let lexer_tokens = &lexer_tokens[1..];
+            let lexer_tokens = &mut lexer_tokens[1..];
             let lexer_tokens =
                 expect(Token::Colon, lexer_tokens).context("Parsing a switch-default statement")?;
             let (follow_statement, lexer_tokens) =
@@ -548,16 +685,17 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                     break_label: None,
                     label: String::from("default"),
                 },
-                &lexer_tokens,
+                lexer_tokens,
             ))
         }
-        _ => match &lexer_tokens[0..2] {
+        _ => match &mut lexer_tokens[0..2] {
             [Token::Identifier(identifier), Token::Colon] => {
+                let identifier = std::mem::take(identifier);
                 let (following_statement, lexer_tokens) =
-                    parse_statement(&lexer_tokens[2..]).context("Parsing a label statement")?;
+                    parse_statement(&mut lexer_tokens[2..]).context("Parsing a label statement")?;
                 Ok((
-                    Statement::Label(identifier.clone(), Box::new(following_statement)),
-                    &lexer_tokens,
+                    Statement::Label(identifier, Box::new(following_statement)),
+                    lexer_tokens,
                 ))
             }
             _ => {
@@ -565,31 +703,232 @@ fn parse_statement(lexer_tokens: &[Token]) -> Result<(Statement, &[Token])> {
                     parse_expression(lexer_tokens, 0).context("Parsing an expression statement")?;
                 let lexer_tokens = expect(Token::Semicolon, lexer_tokens)
                     .context("Parsing an expression statement")?;
-                Ok((Statement::Expression(expression), &lexer_tokens))
+                Ok((Statement::Expression(expression), lexer_tokens))
             }
         },
     }
 }
 
-// <for-init> ::= <declaration> | [ <exp> ] ";"
-fn parse_for_init(lexer_tokens: &[Token]) -> Result<(ForInit, &[Token])> {
-    match &lexer_tokens[0] {
-        Token::Int => {
-            let (declaration, lexer_tokens) =
-                parse_declaration(lexer_tokens).context("Parsing a for_init statement")?;
-            Ok((ForInit::InitialDeclaration(declaration), lexer_tokens))
+// <primary> ::= <int> | <identifier> [ <postfix_op> ] | "(" <exp> ")" [ <postfix_op> ] | <identifier> "(" [ <argument-list> ] ")"
+fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token])> {
+    match &mut lexer_tokens[0] {
+        Token::Constant(constant) => Ok((Expression::Constant(*constant), &mut lexer_tokens[1..])),
+        Token::Identifier(identifier) => {
+            let identifier = std::mem::take(identifier);
+            let mut lexer_tokens = &mut lexer_tokens[1..];
+            if matches!(lexer_tokens[0], Token::OpenParenthesis) {
+                let (arguments, lexer_tokens) = match lexer_tokens[1] {
+                    Token::CloseParenthesis => (vec![], &mut lexer_tokens[2..]),
+                    _ => {
+                        let (arguments, lexer_tokens) = parse_argument_list(&mut lexer_tokens[1..])
+                            .context("Parsing a primary")?;
+                        let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
+                            .context("Parsing a primary")?;
+                        (arguments, lexer_tokens)
+                    }
+                };
+                Ok((
+                    Expression::FunctionCall {
+                        identifier,
+                        arguments,
+                    },
+                    lexer_tokens,
+                ))
+            } else {
+                let mut left = Expression::Var { identifier };
+                while let Some(unary_operator) = parse_postfix_operator(&lexer_tokens) {
+                    left = Expression::Unary(unary_operator, Box::new(left));
+                    lexer_tokens = &mut lexer_tokens[1..];
+                }
+                Ok((left, lexer_tokens))
+            }
         }
-        Token::Semicolon => Ok((ForInit::InitialOptionalExpression(None), &lexer_tokens[1..])),
-        _ => {
+        Token::OpenParenthesis => {
+            let lexer_tokens = &mut lexer_tokens[1..];
             let (expression, lexer_tokens) =
-                parse_expression(lexer_tokens, 0).context("Parsing a for_init statement")?;
-            let lexer_tokens =
-                expect(Token::Semicolon, lexer_tokens).context("Parsing a for_init statement")?;
-            Ok((
-                ForInit::InitialOptionalExpression(Some(expression)),
-                lexer_tokens,
-            ))
+                parse_expression(lexer_tokens, 0).context("parsing a primary expression")?;
+            let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
+                .context("parsing a primary expression")?;
+            let mut left = expression;
+            let mut lexer_tokens = lexer_tokens;
+            while let Some(unary_operator) = parse_postfix_operator(&lexer_tokens) {
+                left = Expression::Unary(unary_operator, Box::new(left));
+                lexer_tokens = &mut lexer_tokens[1..];
+            }
+            Ok((left, lexer_tokens))
         }
+        _ => Err(anyhow!(
+            "Syntax error, found token {:?} while parsing a primary expression",
+            &lexer_tokens[0]
+        )),
+    }
+}
+
+// <argument-list> ::= <exp> { "," <exp> }
+fn parse_argument_list(lexer_tokens: &mut [Token]) -> Result<(Vec<Expression>, &mut [Token])> {
+    let mut arguments: Vec<Expression> = vec![];
+    let mut lexer_tokens = lexer_tokens;
+    loop {
+        let expression;
+        (expression, lexer_tokens) =
+            parse_expression(lexer_tokens, 0).context("parsing an argument-list")?;
+        arguments.push(expression);
+        if !matches!(lexer_tokens[0], Token::Comma) {
+            break;
+        }
+        lexer_tokens = &mut lexer_tokens[1..];
+    }
+    Ok((arguments, lexer_tokens))
+}
+
+// <unary_exp> ::= <prefix_op> <unary_exp> | <primary>
+fn parse_unary_expression(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token])> {
+    match &lexer_tokens[0] {
+        Token::Hyphen
+        | Token::Tilde
+        | Token::Exclamation
+        | Token::DoubleHyphen
+        | Token::DoublePlus => {
+            let (unary_op, lexer_tokens) =
+                parse_prefix_operator(lexer_tokens).context("parsing a prefix unary expression")?;
+            let (primary, lexer_tokens) = parse_unary_expression(lexer_tokens)
+                .context("parsing a prefix unary expression")?;
+            Ok((Expression::Unary(unary_op, Box::new(primary)), lexer_tokens))
+        }
+        _ => parse_primary(lexer_tokens),
+    }
+}
+
+// <exp> ::= <unary_exp> | <exp> <binop> <exp> | <exp> "?" <exp> ":" <exp>
+fn parse_expression(
+    lexer_tokens: &mut [Token],
+    min_precedence: u8,
+) -> Result<(Expression, &mut [Token])> {
+    let (mut left, mut lexer_tokens) =
+        parse_unary_expression(lexer_tokens).context("parsing an expression")?;
+    let mut right;
+    let mut binary_operator;
+    while get_binary_operator_precedence(&lexer_tokens[0]) >= Some(min_precedence) {
+        match &lexer_tokens[0] {
+            Token::Equal => {
+                lexer_tokens = &mut lexer_tokens[1..];
+                (right, lexer_tokens) =
+                    parse_expression(lexer_tokens, BinaryOperator::Assign.precedence())
+                        .context("parsing an expression")?;
+                left = Expression::Assignment(Box::new(left), Box::new(right));
+            }
+            Token::QuestionMark => {
+                lexer_tokens = &mut lexer_tokens[1..];
+                let middle: Expression;
+                (middle, lexer_tokens) = parse_expression(lexer_tokens, 0)
+                    .context("parsing a conditional expression")?;
+                lexer_tokens = expect(Token::Colon, lexer_tokens)
+                    .context("parsing a conditional expression")?;
+                (right, lexer_tokens) =
+                    parse_expression(lexer_tokens, BinaryOperator::Conditional.precedence())
+                        .context("parsing a conditional expression")?;
+                left = Expression::Conditional(Box::new(left), Box::new(middle), Box::new(right));
+            }
+            _ => {
+                (binary_operator, lexer_tokens) = parse_binary_operator(lexer_tokens)
+                    .context("parsing a conditional expression")?;
+                let enforce_left_precedence: u8 = match binary_operator {
+                    BinaryOperator::SumAssign
+                    | BinaryOperator::DifferenceAssign
+                    | BinaryOperator::ProductAssign
+                    | BinaryOperator::QuotientAssign
+                    | BinaryOperator::RemainderAssign
+                    | BinaryOperator::BitwiseAndAssign
+                    | BinaryOperator::BitwiseOrAssign
+                    | BinaryOperator::BitwiseXOrAssign
+                    | BinaryOperator::LeftShiftAssign
+                    | BinaryOperator::RightShiftAssign => 0,
+                    _ => 1,
+                };
+                (right, lexer_tokens) = parse_expression(
+                    lexer_tokens,
+                    binary_operator.precedence() + enforce_left_precedence,
+                )
+                .context("Parsing a binary expression")?;
+                left = Expression::BinaryOperation {
+                    binary_operator,
+                    left_operand: Box::new(left),
+                    right_operand: Box::new(right),
+                };
+            }
+        }
+    }
+    Ok((left, lexer_tokens))
+}
+
+// <unop> ::= "-" | "~" | "!" | -- | ++
+fn parse_prefix_operator(lexer_tokens: &mut [Token]) -> Result<(UnaryOperator, &mut [Token])> {
+    match &lexer_tokens[0] {
+        Token::Hyphen => Ok((UnaryOperator::Negate, &mut lexer_tokens[1..])),
+        Token::Tilde => Ok((UnaryOperator::Complement, &mut lexer_tokens[1..])),
+        Token::Exclamation => Ok((UnaryOperator::Not, &mut lexer_tokens[1..])),
+        Token::DoubleHyphen => Ok((UnaryOperator::PrefixDecrement, &mut lexer_tokens[1..])),
+        Token::DoublePlus => Ok((UnaryOperator::PrefixIncrement, &mut lexer_tokens[1..])),
+        _ => Err(fail()),
+    }
+}
+
+fn expect(expected: Token, lexer_tokens: &mut [Token]) -> Result<&mut [Token]> {
+    match lexer_tokens {
+        t if t.is_empty() => Err(anyhow!(
+            "Syntax error, expected {:?} but found nothing",
+            expected
+        )),
+        t if discriminant(&expected) != discriminant(&t[0]) => Err(anyhow!(
+            "Syntax error, expected {:?} but found {:?}",
+            expected,
+            &t[0]
+        )),
+        _ => Ok(&mut lexer_tokens[1..]),
+    }
+}
+
+fn fail() -> Error {
+    anyhow!("Syntax error")
+}
+
+fn parse_binary_operator(lexer_tokens: &mut [Token]) -> Result<(BinaryOperator, &mut [Token])> {
+    match &lexer_tokens[0] {
+        Token::Plus => Ok((BinaryOperator::Add, &mut lexer_tokens[1..])),
+        Token::Hyphen => Ok((BinaryOperator::Subtract, &mut lexer_tokens[1..])),
+        Token::Asterisk => Ok((BinaryOperator::Multiply, &mut lexer_tokens[1..])),
+        Token::ForwardSlash => Ok((BinaryOperator::Divide, &mut lexer_tokens[1..])),
+        Token::PercentSign => Ok((BinaryOperator::Remainder, &mut lexer_tokens[1..])),
+        Token::DoubleOpenAngleBracket => Ok((BinaryOperator::LeftShift, &mut lexer_tokens[1..])),
+        Token::DoubleCloseAngleBracket => Ok((BinaryOperator::RightShift, &mut lexer_tokens[1..])),
+        Token::Ampersand => Ok((BinaryOperator::BitwiseAnd, &mut lexer_tokens[1..])),
+        Token::Caret => Ok((BinaryOperator::BitwiseXOr, &mut lexer_tokens[1..])),
+        Token::Pipe => Ok((BinaryOperator::BitwiseOr, &mut lexer_tokens[1..])),
+        Token::DoubleAmpersand => Ok((BinaryOperator::And, &mut lexer_tokens[1..])),
+        Token::DoublePipe => Ok((BinaryOperator::Or, &mut lexer_tokens[1..])),
+        Token::DoubleEqual => Ok((BinaryOperator::Equal, &mut lexer_tokens[1..])),
+        Token::ExclamationEqual => Ok((BinaryOperator::NotEqual, &mut lexer_tokens[1..])),
+        Token::OpenAngleBracket => Ok((BinaryOperator::LessThan, &mut lexer_tokens[1..])),
+        Token::OpenAngleBracketEqual => Ok((BinaryOperator::LessOrEqual, &mut lexer_tokens[1..])),
+        Token::CloseAngleBracket => Ok((BinaryOperator::GreaterThan, &mut lexer_tokens[1..])),
+        Token::CloseAngleBracketEqual => {
+            Ok((BinaryOperator::GreaterOrEqual, &mut lexer_tokens[1..]))
+        }
+        Token::PlusEqual => Ok((BinaryOperator::SumAssign, &mut lexer_tokens[1..])),
+        Token::HyphenEqual => Ok((BinaryOperator::DifferenceAssign, &mut lexer_tokens[1..])),
+        Token::AsteriskEqual => Ok((BinaryOperator::ProductAssign, &mut lexer_tokens[1..])),
+        Token::ForwardSlashEqual => Ok((BinaryOperator::QuotientAssign, &mut lexer_tokens[1..])),
+        Token::PercentSignEqual => Ok((BinaryOperator::RemainderAssign, &mut lexer_tokens[1..])),
+        Token::AmpersandEqual => Ok((BinaryOperator::BitwiseAndAssign, &mut lexer_tokens[1..])),
+        Token::PipeEqual => Ok((BinaryOperator::BitwiseOrAssign, &mut lexer_tokens[1..])),
+        Token::CaretEqual => Ok((BinaryOperator::BitwiseXOrAssign, &mut lexer_tokens[1..])),
+        Token::DoubleOpenAngleBracketEqual => {
+            Ok((BinaryOperator::LeftShiftAssign, &mut lexer_tokens[1..]))
+        }
+        Token::DoubleCloseAngleBracketEqual => {
+            Ok((BinaryOperator::RightShiftAssign, &mut lexer_tokens[1..]))
+        }
+        _ => Err(fail()),
     }
 }
 
@@ -650,6 +989,7 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         | Token::For
         | Token::Switch
         | Token::Case
+        | Token::Comma
         | Token::Default => None,
     }
 }
@@ -711,192 +1051,12 @@ fn parse_postfix_operator(lexer_tokens: &[Token]) -> Option<UnaryOperator> {
         | Token::For
         | Token::Switch
         | Token::Case
-        | Token::Default => None,
+        | Token::Default
+        | Token::Comma => None,
     }
 }
 
-// <primary> ::= <int> | <identifier> [ <postfix_op> ] | "(" <exp> ")" [ <postfix_op> ]
-fn parse_primary(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
-    match &lexer_tokens[0] {
-        Token::Constant(constant) => Ok((Expression::Constant(*constant), &lexer_tokens[1..])),
-        Token::Identifier(identifier) => {
-            let mut left = Expression::Var {
-                identifier: identifier.clone(),
-            };
-            let mut lexer_tokens = &lexer_tokens[1..];
-            while let Some(unary_operator) = parse_postfix_operator(&lexer_tokens) {
-                left = Expression::Unary(unary_operator, Box::new(left));
-                lexer_tokens = &lexer_tokens[1..];
-            }
-            Ok((left, lexer_tokens))
-        }
-        Token::OpenParenthesis => {
-            let lexer_tokens = &lexer_tokens[1..];
-            let (expression, lexer_tokens) =
-                parse_expression(lexer_tokens, 0).context("parsing a primary expression")?;
-            let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
-                .context("parsing a primary expression")?;
-            let mut left = expression;
-            let mut lexer_tokens = &lexer_tokens[..];
-            while let Some(unary_operator) = parse_postfix_operator(&lexer_tokens) {
-                left = Expression::Unary(unary_operator, Box::new(left));
-                lexer_tokens = &lexer_tokens[1..];
-            }
-            Ok((left, lexer_tokens))
-        }
-        _ => Err(anyhow!(
-            "Syntax error, found token {:?} while parsing a primary expression",
-            &lexer_tokens[0]
-        )),
-    }
-}
-
-// unary_exp> ::= <unop> | <prefix_op> <unary_exp> | <primary>
-fn parse_unary_expression(lexer_tokens: &[Token]) -> Result<(Expression, &[Token])> {
-    match &lexer_tokens[0] {
-        Token::Hyphen
-        | Token::Tilde
-        | Token::Exclamation
-        | Token::DoubleHyphen
-        | Token::DoublePlus => {
-            let (unary_op, lexer_tokens) = parse_prefix_operator(&lexer_tokens)
-                .context("parsing a prefix unary expression")?;
-            let (primary, lexer_tokens) = parse_unary_expression(lexer_tokens)
-                .context("parsing a prefix unary expression")?;
-            Ok((Expression::Unary(unary_op, Box::new(primary)), lexer_tokens))
-        }
-        _ => parse_primary(lexer_tokens),
-    }
-}
-
-// <exp> ::= <unary_exp> | <exp> <binop> <exp> | <exp> "?" <exp> ":" <exp>
-fn parse_expression(lexer_tokens: &[Token], min_precedence: u8) -> Result<(Expression, &[Token])> {
-    let (mut left, mut lexer_tokens) =
-        parse_unary_expression(lexer_tokens).context("parsing a unary expression")?;
-    let mut right;
-    let mut binary_operator;
-    while get_binary_operator_precedence(&lexer_tokens[0]) >= Some(min_precedence) {
-        match &lexer_tokens[0] {
-            Token::Equal => {
-                lexer_tokens = &lexer_tokens[1..];
-                (right, lexer_tokens) =
-                    parse_expression(lexer_tokens, BinaryOperator::Assign.precedence())
-                        .context("parsing an assignment expression")?;
-                left = Expression::Assignment(Box::new(left), Box::new(right));
-            }
-            Token::QuestionMark => {
-                lexer_tokens = &lexer_tokens[1..];
-                let middle: Expression;
-                (middle, lexer_tokens) = parse_expression(lexer_tokens, 0)
-                    .context("parsing a conditional expression")?;
-                lexer_tokens = expect(Token::Colon, lexer_tokens)
-                    .context("parsing a conditional expression")?;
-                (right, lexer_tokens) =
-                    parse_expression(lexer_tokens, BinaryOperator::Conditional.precedence())
-                        .context("parsing a conditional expression")?;
-                left = Expression::Conditional(Box::new(left), Box::new(middle), Box::new(right));
-            }
-            _ => {
-                (binary_operator, lexer_tokens) = parse_binary_operator(&lexer_tokens)?;
-                let enforce_left_precedence: u8 = match binary_operator {
-                    BinaryOperator::SumAssign
-                    | BinaryOperator::DifferenceAssign
-                    | BinaryOperator::ProductAssign
-                    | BinaryOperator::QuotientAssign
-                    | BinaryOperator::RemainderAssign
-                    | BinaryOperator::BitwiseAndAssign
-                    | BinaryOperator::BitwiseOrAssign
-                    | BinaryOperator::BitwiseXOrAssign
-                    | BinaryOperator::LeftShiftAssign
-                    | BinaryOperator::RightShiftAssign => 0,
-                    _ => 1,
-                };
-                (right, lexer_tokens) = parse_expression(
-                    lexer_tokens,
-                    binary_operator.precedence() + enforce_left_precedence,
-                )
-                .context("Parsing a binary expression")?;
-                left = Expression::BinaryOperation {
-                    binary_operator,
-                    left_operand: Box::new(left),
-                    right_operand: Box::new(right),
-                };
-            }
-        }
-    }
-    Ok((left, lexer_tokens))
-}
-
-fn parse_binary_operator(lexer_tokens: &[Token]) -> Result<(BinaryOperator, &[Token])> {
-    match &lexer_tokens[0] {
-        Token::Plus => Ok((BinaryOperator::Add, &lexer_tokens[1..])),
-        Token::Hyphen => Ok((BinaryOperator::Subtract, &lexer_tokens[1..])),
-        Token::Asterisk => Ok((BinaryOperator::Multiply, &lexer_tokens[1..])),
-        Token::ForwardSlash => Ok((BinaryOperator::Divide, &lexer_tokens[1..])),
-        Token::PercentSign => Ok((BinaryOperator::Remainder, &lexer_tokens[1..])),
-        Token::DoubleOpenAngleBracket => Ok((BinaryOperator::LeftShift, &lexer_tokens[1..])),
-        Token::DoubleCloseAngleBracket => Ok((BinaryOperator::RightShift, &lexer_tokens[1..])),
-        Token::Ampersand => Ok((BinaryOperator::BitwiseAnd, &lexer_tokens[1..])),
-        Token::Caret => Ok((BinaryOperator::BitwiseXOr, &lexer_tokens[1..])),
-        Token::Pipe => Ok((BinaryOperator::BitwiseOr, &lexer_tokens[1..])),
-        Token::DoubleAmpersand => Ok((BinaryOperator::And, &lexer_tokens[1..])),
-        Token::DoublePipe => Ok((BinaryOperator::Or, &lexer_tokens[1..])),
-        Token::DoubleEqual => Ok((BinaryOperator::Equal, &lexer_tokens[1..])),
-        Token::ExclamationEqual => Ok((BinaryOperator::NotEqual, &lexer_tokens[1..])),
-        Token::OpenAngleBracket => Ok((BinaryOperator::LessThan, &lexer_tokens[1..])),
-        Token::OpenAngleBracketEqual => Ok((BinaryOperator::LessOrEqual, &lexer_tokens[1..])),
-        Token::CloseAngleBracket => Ok((BinaryOperator::GreaterThan, &lexer_tokens[1..])),
-        Token::CloseAngleBracketEqual => Ok((BinaryOperator::GreaterOrEqual, &lexer_tokens[1..])),
-        Token::PlusEqual => Ok((BinaryOperator::SumAssign, &lexer_tokens[1..])),
-        Token::HyphenEqual => Ok((BinaryOperator::DifferenceAssign, &lexer_tokens[1..])),
-        Token::AsteriskEqual => Ok((BinaryOperator::ProductAssign, &lexer_tokens[1..])),
-        Token::ForwardSlashEqual => Ok((BinaryOperator::QuotientAssign, &lexer_tokens[1..])),
-        Token::PercentSignEqual => Ok((BinaryOperator::RemainderAssign, &lexer_tokens[1..])),
-        Token::AmpersandEqual => Ok((BinaryOperator::BitwiseAndAssign, &lexer_tokens[1..])),
-        Token::PipeEqual => Ok((BinaryOperator::BitwiseOrAssign, &lexer_tokens[1..])),
-        Token::CaretEqual => Ok((BinaryOperator::BitwiseXOrAssign, &lexer_tokens[1..])),
-        Token::DoubleOpenAngleBracketEqual => {
-            Ok((BinaryOperator::LeftShiftAssign, &lexer_tokens[1..]))
-        }
-        Token::DoubleCloseAngleBracketEqual => {
-            Ok((BinaryOperator::RightShiftAssign, &lexer_tokens[1..]))
-        }
-        _ => Err(fail()),
-    }
-}
-
-// <unop> ::= "-" | "~" | "!" | -- | ++
-fn parse_prefix_operator(lexer_tokens: &[Token]) -> Result<(UnaryOperator, &[Token])> {
-    match &lexer_tokens[0] {
-        Token::Hyphen => Ok((UnaryOperator::Negate, &lexer_tokens[1..])),
-        Token::Tilde => Ok((UnaryOperator::Complement, &lexer_tokens[1..])),
-        Token::Exclamation => Ok((UnaryOperator::Not, &lexer_tokens[1..])),
-        Token::DoubleHyphen => Ok((UnaryOperator::PrefixDecrement, &lexer_tokens[1..])),
-        Token::DoublePlus => Ok((UnaryOperator::PrefixIncrement, &lexer_tokens[1..])),
-        _ => Err(fail()),
-    }
-}
-
-fn expect(expected: Token, lexer_tokens: &[Token]) -> Result<&[Token]> {
-    match lexer_tokens {
-        t if t.is_empty() => Err(anyhow!(
-            "Syntax error, expected {:?} but found nothing",
-            expected
-        )),
-        t if discriminant(&expected) != discriminant(&t[0]) => Err(anyhow!(
-            "Syntax error, expected {:?} but found {:?}",
-            expected,
-            &t[0]
-        )),
-        _ => Ok(&lexer_tokens[1..]),
-    }
-}
-
-fn fail() -> Error {
-    anyhow!("Syntax error")
-}
-
-pub fn run_parser(lexer_tokens: &[Token]) -> Result<AbstractSyntaxTree> {
+pub fn run_parser(lexer_tokens: Vec<Token>) -> Result<AbstractSyntaxTree> {
     let program = parse_program(lexer_tokens).context("parse phase")?;
     Ok(AbstractSyntaxTree::Program(program))
 }

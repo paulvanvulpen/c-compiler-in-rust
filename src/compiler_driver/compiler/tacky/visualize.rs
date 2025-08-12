@@ -9,12 +9,16 @@ impl visualize::Visualizer for tacky::TackyAbstractSyntaxTree {
 
 impl visualize::Visualizer for tacky::Program {
     fn visualize(&self, depth: u8) -> String {
-        let tacky::Program::Program(function_definition) = self;
+        let tacky::Program::Program(function_definitions) = self;
         format!(
             "Program(\n\
-		{}\n\
-		)",
-            function_definition.visualize(depth + 1)
+        {}\
+        )",
+            function_definitions
+                .iter()
+                .map(|f| f.visualize(depth + 1))
+                .collect::<Vec<String>>()
+                .join("\n")
         )
     }
 }
@@ -23,6 +27,7 @@ impl visualize::Visualizer for tacky::FunctionDefinition {
     fn visualize(&self, depth: u8) -> String {
         let tacky::FunctionDefinition::Function {
             identifier,
+            parameters,
             instructions,
         } = self;
         let prefix = "    ".repeat(depth as usize);
@@ -35,9 +40,11 @@ impl visualize::Visualizer for tacky::FunctionDefinition {
         format!(
             "{prefix}Function(\n\
 			{prefix}    name={identifier}\n\
+			{prefix}    params={}\n\
 			{prefix}    instructions=\n\
 			{prefix}        {}\n\
 			{prefix})",
+            parameters.join(", "),
             instructions_str
         )
     }
@@ -93,6 +100,19 @@ impl visualize::Visualizer for tacky::Instruction {
                 source.visualize(depth + 1),
                 destination.visualize(depth + 1)
             ),
+            tacky::Instruction::FunCall {
+                identifier,
+                arguments,
+                destination,
+            } => format!(
+                "{identifier}({}) -> {}",
+                arguments
+                    .iter()
+                    .map(|arg| arg.visualize(0))
+                    .collect::<Vec<String>>()
+                    .join(", "),
+                destination.visualize(0)
+            ),
         }
     }
 }
@@ -136,11 +156,11 @@ impl visualize::Visualizer for tacky::BinaryOperator {
     }
 }
 
-impl visualize::Visualizer for tacky::Val {
+impl visualize::Visualizer for tacky::Value {
     fn visualize(&self, _depth: u8) -> String {
         match self {
-            tacky::Val::Constant(value) => format!("Constant({value})"),
-            tacky::Val::Var(value) => format!("Var(\"{value}\")"),
+            tacky::Value::Constant(value) => format!("Constant({value})"),
+            tacky::Value::Var(value) => format!("Var(\"{value}\")"),
         }
     }
 }

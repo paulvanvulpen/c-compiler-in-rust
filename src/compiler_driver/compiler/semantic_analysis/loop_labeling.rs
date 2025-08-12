@@ -42,7 +42,10 @@ fn resolve_statement(
                 let unique_label = generator::make_label(&label);
                 unpacked_cases.insert(
                     label.clone(),
-                    parser::LabelAndMatchValue::new(unique_label.clone(), Some(match_value)),
+                    parser::LabelAndMatchValue {
+                        unique_label: unique_label.clone(),
+                        match_value: Some(match_value),
+                    },
                 );
                 Ok(parser::Statement::Case {
                     match_value,
@@ -76,7 +79,10 @@ fn resolve_statement(
                 let unique_label = generator::make_label(&label);
                 unpacked_cases.insert(
                     label.clone(),
-                    parser::LabelAndMatchValue::new(unique_label.clone(), None),
+                    parser::LabelAndMatchValue {
+                        unique_label: unique_label.clone(),
+                        match_value: None,
+                    },
                 );
                 Ok(parser::Statement::Default {
                     follow_statement: Box::new(
@@ -89,7 +95,7 @@ fn resolve_statement(
                         .context("resolving a switch-default statement")?,
                     ),
                     break_label: break_parent_label,
-                    label: unique_label,
+                    label: unique_label.clone(),
                 })
             }
             None => Err(anyhow!(

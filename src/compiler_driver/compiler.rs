@@ -10,6 +10,7 @@ mod generator;
 mod lexer;
 mod parser;
 mod semantic_analysis;
+mod symbol_table;
 mod tacky;
 mod visualize;
 
@@ -20,14 +21,14 @@ pub fn run_compiler(args: &Args, input_file_path: &Path) -> Result<()> {
         return Ok(());
     }
 
-    let ast = parser::run_parser(&lexer_tokens)?;
+    let ast = parser::run_parser(lexer_tokens)?;
     info!("\nAST:\n{}", ast.visualize(0).as_str());
 
     if args.parse {
         return Ok(());
     }
 
-    let ast = semantic_analysis::run_semantic_analysis(ast)?;
+    let (ast, symbol_table) = semantic_analysis::run_semantic_analysis(ast)?;
     info!("\nAST:\n{}", ast.visualize(0).as_str());
 
     if args.validate {
@@ -44,14 +45,13 @@ pub fn run_compiler(args: &Args, input_file_path: &Path) -> Result<()> {
         .context("Running the assembly generator.")?;
     info!("ASSEMBLY AST\n{}", assembly_ast.visualize(0).as_str());
 
-    let allocation_size = assembly_generator::replace_pseudo_registers(&mut assembly_ast);
+    assembly_generator::replace_pseudo_registers(&mut assembly_ast);
     info!(
-        "ASSEMBLY AST after replace pseudo registers\nallocated: {} bytes\n{}",
-        allocation_size,
+        "ASSEMBLY AST after replace pseudo registers\n{}",
         assembly_ast.visualize(0).as_str()
     );
 
-    assembly_generator::fix_up_invalid_instructions(&mut assembly_ast, allocation_size);
+    assembly_generator::fix_up_invalid_instructions(&mut assembly_ast);
     info!(
         "ASSEMBLY AST after fixing up invalid instructions\n{}",
         assembly_ast.visualize(0).as_str()
@@ -61,7 +61,7 @@ pub fn run_compiler(args: &Args, input_file_path: &Path) -> Result<()> {
         return Ok(());
     }
 
-    code_emission::run_code_emission(assembly_ast, input_file_path)
+    code_emission::run_code_emission(assembly_ast, &symbol_table, input_file_path)
         .context("Code emission failed")?;
 
     Ok(())

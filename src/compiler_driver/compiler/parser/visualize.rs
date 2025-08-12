@@ -1,14 +1,18 @@
-use crate::compiler_driver::compiler::parser::{self, Expression};
+use crate::compiler_driver::compiler::parser;
 use crate::compiler_driver::compiler::visualize;
 
 impl visualize::Visualizer for parser::Program {
     fn visualize(&self, depth: u8) -> String {
-        let parser::Program::Program(function_definition) = self;
+        let parser::Program::Program(parse_function_declarations) = self;
         format!(
             "Program(\n\
         {}\n\
         )",
-            function_definition.visualize(depth + 1)
+            parse_function_declarations
+                .iter()
+                .map(|func| func.visualize(depth + 1))
+                .collect::<Vec<String>>()
+                .join(format!("\n").as_str())
         )
     }
 }
@@ -33,38 +37,59 @@ impl visualize::Visualizer for parser::Block {
     }
 }
 
-impl visualize::Visualizer for parser::FunctionDefinition {
+impl visualize::Visualizer for parser::FunctionDeclaration {
     fn visualize(&self, depth: u8) -> String {
-        let parser::FunctionDefinition::Function { identifier, body } = self;
+        let parser::FunctionDeclaration {
+            identifier,
+            parameters,
+            body,
+        } = self;
         let indent = "    ";
         let prefix = indent.repeat(depth as usize);
-
-        format!(
-            "{prefix}Function(name={identifier}, body=\n\
-            {}\n\
-            {prefix})",
-            body.visualize(depth)
-        )
+        match body {
+            Some(block) => {
+                format!(
+                    "{prefix}Function(name={identifier}, params=int {} body=\n\
+                    {}\n\
+                    {prefix})",
+                    parameters.join(", int "),
+                    block.visualize(depth),
+                )
+            }
+            None => {
+                format!(
+                    "{prefix}Function(name={identifier}, params=int {})",
+                    parameters.join(", int "),
+                )
+            }
+        }
     }
 }
 
 impl visualize::Visualizer for parser::BlockItem {
     fn visualize(&self, depth: u8) -> String {
         match self {
-            parser::BlockItem::Declaration(declaration) => declaration.visualize(depth),
+            parser::BlockItem::Declaration(declaration) => match declaration {
+                parser::Declaration::VariableDeclaration(variable_declaration) => {
+                    variable_declaration.visualize(depth)
+                }
+                parser::Declaration::FunctionDeclaration(function_declaration) => {
+                    function_declaration.visualize(depth)
+                }
+            },
             parser::BlockItem::Statement(statement) => statement.visualize(depth),
         }
     }
 }
 
-impl visualize::Visualizer for parser::Declaration {
+impl visualize::Visualizer for parser::VariableDeclaration {
     fn visualize(&self, depth: u8) -> String {
         let indent = "    ";
         let prefix = indent.repeat(depth as usize);
-        let parser::Declaration::Declaration { identifier, init } = self;
+        let parser::VariableDeclaration { identifier, init } = self;
         match init {
             Some(expression) => match expression {
-                Expression::Constant(..) | Expression::Var { .. } => {
+                parser::Expression::Constant(..) | parser::Expression::Var { .. } => {
                     format!("{prefix}int {identifier} = {};", expression.visualize(0))
                 }
                 _ => format!(
@@ -83,7 +108,9 @@ impl visualize::Visualizer for parser::ForInit {
                 Some(expression) => expression.visualize(depth + 1),
                 None => String::from(""),
             },
-            parser::ForInit::InitialDeclaration(declaration) => declaration.visualize(depth + 1),
+            parser::ForInit::InitialDeclaration(variable_declaration) => {
+                variable_declaration.visualize(depth + 1)
+            }
         }
     }
 }
@@ -299,6 +326,19 @@ impl visualize::Visualizer for parser::Expression {
                     boxed_expression1.visualize(depth + 1),
                     boxed_expression2.visualize(depth + 1),
                     boxed_expression3.visualize(depth + 1),
+                )
+            }
+            parser::Expression::FunctionCall {
+                identifier,
+                arguments,
+            } => {
+                format!(
+                    "{identifier}({})",
+                    arguments
+                        .iter()
+                        .map(|a| a.visualize(0))
+                        .collect::<Vec<String>>()
+                        .join(", ")
                 )
             }
         }

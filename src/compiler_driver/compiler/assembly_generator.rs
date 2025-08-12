@@ -3,30 +3,51 @@ use std::collections::HashMap;
 
 mod visualize;
 
+const PARAMETER_REGISTERS: [Register; 6] = [
+    Register::DI,
+    Register::SI,
+    Register::DX,
+    Register::CX,
+    Register::R8,
+    Register::R9,
+];
+
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program(function_definition)
 // function_definition = Function(identifier name, instruction* instructions)
 // instruction = Mov(operand src, operand dst)
-//				| Unary(unary_operator, operand)
-//				| AllocateStack(int)
-//				| Ret
+//              | Unary(unary_operator, operand)
+//              | Binary(binary_operator, operand, operand)
+//              | Cmp(operand, operand)
+//              | Idiv(operand)
+//              | Cdq
+//              | Jmp(identifier)
+//              | JmpCC(cond_code, identifier)
+//              | SetCC(cond_code, operand)
+//              | Label(identifier)
+//              | AllocateStack(int)
+//              | DeallocateStack(int)
+//              | Push(operand)
+//              | Call(identifier)
+//              | Ret
 // unary_operator = Neg | Not
+// binary_operator = Add | Sub | Mult
 // operand = Imm(int) | Reg(reg) | Pseudo(identifier) | Stack(int)
-// reg = AX | R10
+// cond_code = E | NE | G | GE | L | LE
+// reg = AX | CX | DX | DI | SI | R8 | R8 | R10 | R11
 pub enum AssemblyAbstractSyntaxTree {
     Program(Program),
 }
 
-// <program>
 pub enum Program {
-    Program(FunctionDefinition),
+    Program(Vec<FunctionDefinition>),
 }
 
-// <function>
 pub enum FunctionDefinition {
     Function {
         identifier: String,
         instructions: Vec<Instruction>,
+        stack_size: usize,
     },
 }
 
@@ -42,6 +63,9 @@ pub enum Instruction {
     SetCC(ConditionCode, Operand),
     Label(String),
     AllocateStack(usize),
+    DeallocateStack(usize),
+    Push(Operand),
+    Call(String),
     Ret,
 }
 
@@ -83,14 +107,18 @@ pub enum Register {
     AX,
     CX,
     DX,
+    DI,
+    SI,
+    R8,
+    R9,
     R10,
     R11,
 }
 
-fn convert_val(val: tacky::Val) -> Operand {
-    match val {
-        tacky::Val::Constant(value) => Operand::Immediate(value),
-        tacky::Val::Var(identifier) => Operand::Pseudo { identifier },
+fn convert_value(value: tacky::Value) -> Operand {
+    match value {
+        tacky::Value::Constant(value) => Operand::Immediate(value),
+        tacky::Value::Var(identifier) => Operand::Pseudo { identifier },
     }
 }
 
@@ -138,7 +166,7 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
     match instruction {
         tacky::Instruction::Return(val) => {
             vec![
-                Instruction::Mov(convert_val(val), Operand::Register(Register::AX)),
+                Instruction::Mov(convert_value(val), Operand::Register(Register::AX)),
                 Instruction::Ret,
             ]
         }
@@ -148,16 +176,16 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
             destination,
         } => match unary_operator {
             tacky::UnaryOperator::Complement | tacky::UnaryOperator::Negate => vec![
-                Instruction::Mov(convert_val(source), convert_val(destination.clone())),
+                Instruction::Mov(convert_value(source), convert_value(destination.clone())),
                 Instruction::Unary(
                     convert_unary_operator(unary_operator),
-                    convert_val(destination),
+                    convert_value(destination),
                 ),
             ],
             tacky::UnaryOperator::Not => vec![
-                Instruction::Cmp(Operand::Immediate(0), convert_val(source)),
-                Instruction::Mov(Operand::Immediate(0), convert_val(destination.clone())),
-                Instruction::SetCC(ConditionCode::E, convert_val(destination)),
+                Instruction::Cmp(Operand::Immediate(0), convert_value(source)),
+                Instruction::Mov(Operand::Immediate(0), convert_value(destination.clone())),
+                Instruction::SetCC(ConditionCode::E, convert_value(destination)),
             ],
             tacky::UnaryOperator::PrefixDecrement
             | tacky::UnaryOperator::PostfixDecrement
@@ -182,13 +210,13 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
             | tacky::BinaryOperator::BitwiseOr => {
                 vec![
                     Instruction::Mov(
-                        convert_val(source1.clone()),
-                        convert_val(destination.clone()),
+                        convert_value(source1.clone()),
+                        convert_value(destination.clone()),
                     ),
                     Instruction::Binary(
                         convert_binary_operator(binary_operator),
-                        convert_val(source2),
-                        convert_val(destination),
+                        convert_value(source2),
+                        convert_value(destination),
                     ),
                 ]
             }
@@ -199,28 +227,28 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
             | tacky::BinaryOperator::GreaterOrEqual
             | tacky::BinaryOperator::GreaterThan => {
                 vec![
-                    Instruction::Cmp(convert_val(source2), convert_val(source1)),
-                    Instruction::Mov(Operand::Immediate(0), convert_val(destination.clone())),
+                    Instruction::Cmp(convert_value(source2), convert_value(source1)),
+                    Instruction::Mov(Operand::Immediate(0), convert_value(destination.clone())),
                     Instruction::SetCC(
                         find_associated_condition_code(binary_operator),
-                        convert_val(destination),
+                        convert_value(destination),
                     ),
                 ]
             }
             tacky::BinaryOperator::Divide => {
                 vec![
-                    Instruction::Mov(convert_val(source1), Operand::Register(Register::AX)),
+                    Instruction::Mov(convert_value(source1), Operand::Register(Register::AX)),
                     Instruction::Cdq,
-                    Instruction::Idiv(convert_val(source2)),
-                    Instruction::Mov(Operand::Register(Register::AX), convert_val(destination)),
+                    Instruction::Idiv(convert_value(source2)),
+                    Instruction::Mov(Operand::Register(Register::AX), convert_value(destination)),
                 ]
             }
             tacky::BinaryOperator::Remainder => {
                 vec![
-                    Instruction::Mov(convert_val(source1), Operand::Register(Register::AX)),
+                    Instruction::Mov(convert_value(source1), Operand::Register(Register::AX)),
                     Instruction::Cdq,
-                    Instruction::Idiv(convert_val(source2)),
-                    Instruction::Mov(Operand::Register(Register::DX), convert_val(destination)),
+                    Instruction::Idiv(convert_value(source2)),
+                    Instruction::Mov(Operand::Register(Register::DX), convert_value(destination)),
                 ]
             }
             tacky::BinaryOperator::And | tacky::BinaryOperator::Or => {
@@ -232,19 +260,19 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
             destination,
         } => {
             vec![Instruction::Mov(
-                convert_val(source),
-                convert_val(destination),
+                convert_value(source),
+                convert_value(destination),
             )]
         }
         tacky::Instruction::JumpIfZero { condition, target } => {
             vec![
-                Instruction::Cmp(Operand::Immediate(0), convert_val(condition)),
+                Instruction::Cmp(Operand::Immediate(0), convert_value(condition)),
                 Instruction::JmpCC(ConditionCode::E, target),
             ]
         }
         tacky::Instruction::JumpIfNotZero { condition, target } => {
             vec![
-                Instruction::Cmp(Operand::Immediate(0), convert_val(condition)),
+                Instruction::Cmp(Operand::Immediate(0), convert_value(condition)),
                 Instruction::JmpCC(ConditionCode::NE, target),
             ]
         }
@@ -254,7 +282,101 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
         tacky::Instruction::Label { identifier } => {
             vec![Instruction::Label(identifier)]
         }
+        tacky::Instruction::FunCall {
+            identifier,
+            arguments,
+            destination,
+        } => {
+            let mut instructions: Vec<Instruction> = vec![];
+            let mut iter = arguments.into_iter();
+            let register_arguments: Vec<tacky::Value> =
+                iter.by_ref().take(PARAMETER_REGISTERS.len()).collect();
+            let stack_arguments: Vec<tacky::Value> = iter.collect();
+            let stack_arguments_length = stack_arguments.len();
+            let stack_padding = if stack_arguments_length % 2 == 0 {
+                0
+            } else {
+                8
+            };
+            if stack_padding != 0 {
+                instructions.push(Instruction::AllocateStack(8))
+            }
+            for (register, tacky_argument) in PARAMETER_REGISTERS.iter().zip(register_arguments) {
+                let assembly_argument = convert_value(tacky_argument);
+                instructions.push(Instruction::Mov(
+                    assembly_argument,
+                    Operand::Register(register.clone()),
+                ));
+            }
+
+            for tacky_argument in stack_arguments.into_iter().rev() {
+                let assembly_argument = convert_value(tacky_argument);
+                match assembly_argument {
+                    Operand::Immediate(_) => {
+                        instructions.push(Instruction::Push(assembly_argument));
+                    }
+                    Operand::Register(_) => panic!("TACKY has no concept of a register"),
+                    Operand::Pseudo { .. } => {
+                        // AX is safe as it's not a callee-saved registers
+                        instructions.push(Instruction::Mov(
+                            assembly_argument,
+                            Operand::Register(Register::AX),
+                        ));
+                        instructions.push(Instruction::Push(Operand::Register(Register::AX)));
+                    }
+                    Operand::Stack { .. } => panic!(
+                        "stack operations are only produced during the 'replace-pseudo-registers'-pass"
+                    ),
+                }
+            }
+            instructions.push(Instruction::Call(identifier));
+            let bytes_to_remove = 8 * stack_arguments_length + stack_padding;
+            if bytes_to_remove != 0 {
+                instructions.push(Instruction::DeallocateStack(bytes_to_remove));
+            }
+
+            let assembly_destination = convert_value(destination);
+            instructions.push(Instruction::Mov(
+                Operand::Register(Register::AX),
+                assembly_destination,
+            ));
+            instructions
+        }
     }
+}
+
+fn convert_parameters(parameters: Vec<String>) -> Vec<Instruction> {
+    let mut instructions: Vec<Instruction> = parameters
+        .iter()
+        .zip(PARAMETER_REGISTERS.iter())
+        .map(|(param, reg)| {
+            Instruction::Mov(
+                Operand::Register(reg.clone()),
+                Operand::Pseudo {
+                    identifier: param.clone(),
+                },
+            )
+        })
+        .collect();
+
+    // "call" pushes the current %RIP onto the stack (8 bytes)
+    // then %RBP is put onto the stack next during the function prologue. (8 bytes)
+    // so to reach the arguments of the previous stack frame,
+    // it requires to travel up the stack 16 bytes to reach the last argument.
+    let mut stack_offset = 16;
+    for i in 6..parameters.len() {
+        instructions.push(Instruction::Mov(
+            Operand::Stack {
+                offset: stack_offset,
+            },
+            Operand::Pseudo {
+                identifier: parameters[i].clone(),
+            },
+        ));
+        stack_offset += 8;
+    }
+
+    instructions
 }
 
 fn convert_function_definition(
@@ -263,24 +385,37 @@ fn convert_function_definition(
     match function_definition {
         tacky::FunctionDefinition::Function {
             identifier,
+            parameters,
             instructions,
-        } => FunctionDefinition::Function {
-            identifier,
-            instructions: {
-                instructions
-                    .into_iter()
-                    .flat_map(convert_instruction)
-                    .collect()
-            },
-        },
+        } => {
+            let copied_parameter_count = parameters.len();
+            let mut converted_instructions: Vec<Instruction> = convert_parameters(parameters);
+
+            FunctionDefinition::Function {
+                identifier,
+                instructions: {
+                    converted_instructions.extend(
+                        instructions
+                            .into_iter()
+                            .flat_map(convert_instruction)
+                            .collect::<Vec<Instruction>>(),
+                    );
+                    converted_instructions
+                },
+                stack_size: copied_parameter_count * 4,
+            }
+        }
     }
 }
 
 fn convert_program(program: tacky::Program) -> Program {
     match program {
-        tacky::Program::Program(function_definition) => {
-            Program::Program(convert_function_definition(function_definition))
-        }
+        tacky::Program::Program(function_definitions) => Program::Program(
+            function_definitions
+                .into_iter()
+                .map(|f| convert_function_definition(f))
+                .collect(),
+        ),
     }
 }
 
@@ -292,58 +427,54 @@ fn convert_ast(ast: tacky::TackyAbstractSyntaxTree) -> AssemblyAbstractSyntaxTre
     }
 }
 
-pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) -> usize {
+pub fn replace_pseudo_registers(assembly_ast: &mut AssemblyAbstractSyntaxTree) {
     let mut temporary_to_offset: HashMap<String, isize> = HashMap::new();
-    let mut alloc_size: usize = 0;
 
-    let AssemblyAbstractSyntaxTree::Program(Program::Program(FunctionDefinition::Function {
-        instructions,
-        ..
-    })) = assembly_ast;
+    let AssemblyAbstractSyntaxTree::Program(Program::Program(function_definitions)) = assembly_ast;
 
-    let mut replace_pseudo_with_stack = |operand: &mut Operand| {
+    let mut replace_pseudo_with_stack = |operand: &mut Operand, alloc_size: &mut usize| {
         if let Operand::Pseudo { identifier } = operand {
-            let id = std::mem::take(identifier);
-            let offset: isize = *temporary_to_offset.entry(id).or_insert_with(|| {
-                alloc_size += 4;
-                -(alloc_size as isize)
+            let identifier = std::mem::take(identifier);
+            let offset: isize = *temporary_to_offset.entry(identifier).or_insert_with(|| {
+                *alloc_size += 4;
+                -(*alloc_size as isize)
             });
             *operand = Operand::Stack { offset };
         }
     };
 
-    for instruction in instructions.iter_mut() {
-        match instruction {
-            Instruction::Mov(op1, op2) => {
-                replace_pseudo_with_stack(op1);
-                replace_pseudo_with_stack(op2);
+    for function in function_definitions {
+        let FunctionDefinition::Function {
+            instructions,
+            stack_size,
+            ..
+        } = function;
+
+        for instruction in instructions.iter_mut() {
+            match instruction {
+                Instruction::Mov(op1, op2)
+                | Instruction::Binary(.., op1, op2)
+                | Instruction::Cmp(op1, op2) => {
+                    replace_pseudo_with_stack(op1, stack_size);
+                    replace_pseudo_with_stack(op2, stack_size);
+                }
+                Instruction::Unary(.., operand)
+                | Instruction::Idiv(operand)
+                | Instruction::SetCC(.., operand)
+                | Instruction::Push(operand) => {
+                    replace_pseudo_with_stack(operand, stack_size);
+                }
+                Instruction::Ret
+                | Instruction::AllocateStack(_)
+                | Instruction::DeallocateStack(_)
+                | Instruction::Call(_)
+                | Instruction::Cdq
+                | Instruction::Jmp(_)
+                | Instruction::JmpCC(_, _)
+                | Instruction::Label(_) => {}
             }
-            Instruction::Unary(.., operand) => {
-                replace_pseudo_with_stack(operand);
-            }
-            Instruction::Binary(.., op1, op2) => {
-                replace_pseudo_with_stack(op1);
-                replace_pseudo_with_stack(op2);
-            }
-            Instruction::Idiv(operand) => {
-                replace_pseudo_with_stack(operand);
-            }
-            Instruction::Cmp(op1, op2) => {
-                replace_pseudo_with_stack(op1);
-                replace_pseudo_with_stack(op2);
-            }
-            Instruction::SetCC(.., op1) => {
-                replace_pseudo_with_stack(op1);
-            }
-            Instruction::Ret
-            | Instruction::AllocateStack(_)
-            | Instruction::Cdq
-            | Instruction::Jmp(_)
-            | Instruction::JmpCC(_, _)
-            | Instruction::Label(_) => {}
         }
     }
-    alloc_size
 }
 
 fn fix_invalid_instruction(instruction: Instruction) -> Vec<Instruction> {
@@ -409,21 +540,21 @@ fn fix_up_instructions(instructions: Vec<Instruction>) -> Vec<Instruction> {
         .collect()
 }
 
-pub fn fix_up_invalid_instructions(
-    assembly_ast: &mut AssemblyAbstractSyntaxTree,
-    allocate_stack_size: usize,
-) {
-    let AssemblyAbstractSyntaxTree::Program(Program::Program(FunctionDefinition::Function {
-        instructions,
-        ..
-    })) = assembly_ast;
+pub fn fix_up_invalid_instructions(assembly_ast: &mut AssemblyAbstractSyntaxTree) {
+    let AssemblyAbstractSyntaxTree::Program(Program::Program(function_definitions)) = assembly_ast;
 
-    if allocate_stack_size > 0 {
-        instructions.insert(0, Instruction::AllocateStack(allocate_stack_size));
+    for function in function_definitions {
+        let FunctionDefinition::Function {
+            instructions,
+            stack_size,
+            ..
+        } = function;
+        if *stack_size > 0 {
+            instructions.insert(0, Instruction::AllocateStack((*stack_size + 15) & !15))
+        }
+        let old = std::mem::take(instructions);
+        *instructions = fix_up_instructions(old)
     }
-
-    let old = std::mem::take(instructions);
-    *instructions = fix_up_instructions(old);
 }
 
 pub fn run_assembly_generator(

@@ -52,6 +52,7 @@ fn run_assembler(input: &Path) -> Result<()> {
 }
 
 fn run_linker(args: &Args) -> Result<()> {
+    info!("{}", args.source_files.join(", "));
     let input_files = args
         .source_files
         .iter()

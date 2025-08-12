@@ -14,6 +14,7 @@ use super::parser;
 //      | JumpIfZero(val condition, identifier target)
 //      | JumpIfNotZero(val condition, identifier target)
 //      | Label(identifier)
+//      | FunCall(identifier fun_name, val* args, val dst)
 // val = Constant(int) | Var(identifier)
 // unary_operator = Complement | Negate | Not
 // binary_operator = Add | Subtract | Multiply | Divide | Remainder | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual
@@ -22,46 +23,52 @@ pub enum TackyAbstractSyntaxTree {
 }
 
 pub enum Program {
-    Program(FunctionDefinition),
+    Program(Vec<FunctionDefinition>),
 }
 
 pub enum FunctionDefinition {
     Function {
         identifier: String,
+        parameters: Vec<String>,
         instructions: Vec<Instruction>,
     },
 }
 
 pub enum Instruction {
-    Return(Val),
+    Return(Value),
     Unary {
         unary_operator: UnaryOperator,
-        source: Val,
-        destination: Val,
+        source: Value,
+        destination: Value,
     },
     Binary {
         binary_operator: BinaryOperator,
-        source1: Val,
-        source2: Val,
-        destination: Val,
+        source1: Value,
+        source2: Value,
+        destination: Value,
     },
     Copy {
-        source: Val,
-        destination: Val,
+        source: Value,
+        destination: Value,
     },
     Jump {
         target: String,
     },
     JumpIfZero {
-        condition: Val,
+        condition: Value,
         target: String,
     },
     JumpIfNotZero {
-        condition: Val,
+        condition: Value,
         target: String,
     },
     Label {
         identifier: String,
+    },
+    FunCall {
+        identifier: String,
+        arguments: Vec<Value>,
+        destination: Value,
     },
 }
 
@@ -97,7 +104,7 @@ pub enum BinaryOperator {
 }
 
 #[derive(Clone)]
-pub enum Val {
+pub enum Value {
     Constant(usize),
     Var(String),
 }
@@ -166,22 +173,22 @@ fn make_temporary() -> String {
     format!("tmp.{id}")
 }
 
-fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val) {
+fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Value) {
     match expression {
         parser::Expression::Constant(value) => {
             let instructions: Vec<Instruction> = vec![];
-            (instructions, Val::Constant(value))
+            (instructions, Value::Constant(value))
         }
         parser::Expression::Var { identifier } => {
             let instructions: Vec<Instruction> = vec![];
-            (instructions, Val::Var(identifier))
+            (instructions, Value::Var(identifier))
         }
         parser::Expression::Unary(unary_operator, boxed_expression) => {
             let unary_operator = convert_unary_operator(unary_operator);
             match unary_operator {
                 UnaryOperator::Complement | UnaryOperator::Negate | UnaryOperator::Not => {
                     let (mut instructions, source) = convert_expression(*boxed_expression);
-                    let destination = Val::Var(make_temporary());
+                    let destination = Value::Var(make_temporary());
                     instructions.push(Instruction::Unary {
                         unary_operator,
                         source,
@@ -207,14 +214,14 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                     let (mut instructions, destination_operand) =
                         convert_expression(*boxed_expression);
 
-                    let unmodified_rhs = Val::Var(make_temporary());
+                    let unmodified_rhs = Value::Var(make_temporary());
 
                     instructions.push(Instruction::Copy {
                         source: destination_operand.clone(),
                         destination: unmodified_rhs.clone(),
                     });
 
-                    let destination = Val::Var(make_temporary());
+                    let destination = Value::Var(make_temporary());
                     let binary_operator = match unary_operator {
                         UnaryOperator::PostfixDecrement => BinaryOperator::Subtract,
                         UnaryOperator::PostfixIncrement => BinaryOperator::Add,
@@ -224,7 +231,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                     instructions.push(Instruction::Binary {
                         binary_operator: binary_operator,
                         source1: destination_operand.clone(),
-                        source2: Val::Constant(1),
+                        source2: Value::Constant(1),
                         destination: destination.clone(),
                     });
 
@@ -272,7 +279,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 let mut instructions = instructions1;
 
                 let final_destination = make_temporary();
-                let destination = Val::Var(final_destination);
+                let destination = Value::Var(final_destination);
                 instructions.push(Instruction::Binary {
                     binary_operator,
                     source1: destination_left_operand,
@@ -299,7 +306,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 let mut instructions = instructions1;
 
                 let final_destination = make_temporary();
-                let destination = Val::Var(final_destination);
+                let destination = Value::Var(final_destination);
                 instructions.push(Instruction::Binary {
                     binary_operator,
                     source1: destination_left_operand.clone(),
@@ -324,7 +331,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 let (left_instructions, destination_left_operand) =
                     convert_expression(*left_operand);
                 let left_expression_result = make_temporary();
-                let left_expression_result = Val::Var(left_expression_result);
+                let left_expression_result = Value::Var(left_expression_result);
                 let mut instructions = left_instructions;
                 instructions.push(Instruction::Copy {
                     source: destination_left_operand,
@@ -338,7 +345,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 let (right_instructions, destination_right_operand) =
                     convert_expression(*right_operand);
                 let right_expression_result = make_temporary();
-                let right_expression_result = Val::Var(right_expression_result);
+                let right_expression_result = Value::Var(right_expression_result);
                 instructions.extend(right_instructions);
                 instructions.push(Instruction::Copy {
                     source: destination_right_operand,
@@ -350,10 +357,10 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 });
 
                 let end_result = make_temporary();
-                let end_result = Val::Var(end_result);
+                let end_result = Value::Var(end_result);
 
                 instructions.push(Instruction::Copy {
-                    source: Val::Constant(1),
+                    source: Value::Constant(1),
                     destination: end_result.clone(),
                 });
 
@@ -364,7 +371,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                     identifier: false_label,
                 });
                 instructions.push(Instruction::Copy {
-                    source: Val::Constant(0),
+                    source: Value::Constant(0),
                     destination: end_result.clone(),
                 });
                 instructions.push(Instruction::Label {
@@ -384,7 +391,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                     convert_expression(*left_operand);
                 let mut instructions = left_instructions;
                 let left_expression_result = make_temporary();
-                let left_expression_result = Val::Var(left_expression_result);
+                let left_expression_result = Value::Var(left_expression_result);
                 instructions.push(Instruction::Copy {
                     source: destination_left_operand,
                     destination: left_expression_result.clone(),
@@ -397,7 +404,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 let (right_instructions, destination_right_operand) =
                     convert_expression(*right_operand);
                 let right_expression_result = make_temporary();
-                let right_expression_result = Val::Var(right_expression_result);
+                let right_expression_result = Value::Var(right_expression_result);
                 instructions.extend(right_instructions);
                 instructions.push(Instruction::Copy {
                     source: destination_right_operand,
@@ -409,10 +416,10 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 });
 
                 let end_result = make_temporary();
-                let end_result = Val::Var(end_result);
+                let end_result = Value::Var(end_result);
 
                 instructions.push(Instruction::Copy {
-                    source: Val::Constant(0),
+                    source: Value::Constant(0),
                     destination: end_result.clone(),
                 });
 
@@ -424,7 +431,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                     identifier: true_label,
                 });
                 instructions.push(Instruction::Copy {
-                    source: Val::Constant(1),
+                    source: Value::Constant(1),
                     destination: end_result.clone(),
                 });
                 instructions.push(Instruction::Label {
@@ -449,7 +456,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
 
             let (mut instructions, condition_destination) = convert_expression(*left_expression);
             let left_expression_result = make_temporary();
-            let left_expression_result = Val::Var(left_expression_result);
+            let left_expression_result = Value::Var(left_expression_result);
             instructions.push(Instruction::Copy {
                 source: condition_destination,
                 destination: left_expression_result.clone(),
@@ -461,13 +468,13 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
             let (then_instructions, then_destination) = convert_expression(*middle_expression);
             instructions.extend(then_instructions);
             let middle_expression_result = make_temporary();
-            let middle_expression_result = Val::Var(middle_expression_result);
+            let middle_expression_result = Value::Var(middle_expression_result);
             instructions.push(Instruction::Copy {
                 source: then_destination.clone(),
                 destination: middle_expression_result.clone(),
             });
             let final_result = make_temporary();
-            let final_result = Val::Var(final_result);
+            let final_result = Value::Var(final_result);
             instructions.push(Instruction::Copy {
                 source: middle_expression_result,
                 destination: final_result.clone(),
@@ -481,7 +488,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
             let (else_instructions, else_destination) = convert_expression(*right_expression);
             instructions.extend(else_instructions);
             let right_expression_result = make_temporary();
-            let right_expression_result = Val::Var(right_expression_result);
+            let right_expression_result = Value::Var(right_expression_result);
             instructions.push(Instruction::Copy {
                 source: else_destination.clone(),
                 destination: right_expression_result.clone(),
@@ -494,6 +501,26 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Val)
                 identifier: end_label,
             });
             (instructions, final_result)
+        }
+        parser::Expression::FunctionCall {
+            identifier,
+            arguments,
+        } => {
+            let mut instructions = vec![];
+            let mut resolved_arguments = vec![];
+            for argument in arguments {
+                let (expression_instructions, destination) = convert_expression(argument);
+                instructions.extend(expression_instructions);
+                resolved_arguments.push(destination);
+            }
+            let function_call_result = make_temporary();
+            let function_call_result = Value::Var(function_call_result);
+            instructions.push(Instruction::FunCall {
+                identifier,
+                arguments: resolved_arguments,
+                destination: function_call_result.clone(),
+            });
+            (instructions, function_call_result)
         }
     }
 }
@@ -516,7 +543,7 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
 
                 let (mut instructions, condition_destination) = convert_expression(condition);
                 let condition_expression_result = make_temporary();
-                let condition_expression_result = Val::Var(condition_expression_result);
+                let condition_expression_result = Value::Var(condition_expression_result);
                 instructions.push(Instruction::Copy {
                     source: condition_destination,
                     destination: condition_expression_result.clone(),
@@ -546,7 +573,7 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
                 let end_label: String = generator::make_label("end");
                 let (mut instructions, condition_destination) = convert_expression(condition);
                 let right_expression_result = make_temporary();
-                let right_expression_result = Val::Var(right_expression_result);
+                let right_expression_result = Value::Var(right_expression_result);
                 instructions.push(Instruction::Copy {
                     source: condition_destination,
                     destination: right_expression_result.clone(),
@@ -608,7 +635,7 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
             let (condition_instructions, condition_destination) = convert_expression(condition);
             instructions.extend(condition_instructions);
             let condition_expression_result = make_temporary();
-            let condition_expression_result = Val::Var(condition_expression_result);
+            let condition_expression_result = Value::Var(condition_expression_result);
             instructions.push(Instruction::Copy {
                 source: condition_destination,
                 destination: condition_expression_result.clone(),
@@ -634,7 +661,7 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
             let (condition_instructions, condition_destination) = convert_expression(condition);
             instructions.extend(condition_instructions);
             let condition_expression_result = make_temporary();
-            let condition_expression_result = Val::Var(condition_expression_result);
+            let condition_expression_result = Value::Var(condition_expression_result);
             instructions.push(Instruction::Copy {
                 source: condition_destination,
                 destination: condition_expression_result.clone(),
@@ -669,7 +696,7 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
                 let (condition_instructions, condition_destination) = convert_expression(condition);
                 instructions.extend(condition_instructions);
                 let condition_expression_result = make_temporary();
-                let condition_expression_result = Val::Var(condition_expression_result);
+                let condition_expression_result = Value::Var(condition_expression_result);
                 instructions.push(Instruction::Copy {
                     source: condition_destination,
                     destination: condition_expression_result.clone(),
@@ -705,7 +732,7 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
         } => {
             let (mut instructions, condition_destination) = convert_expression(condition);
             let condition_expression_result = make_temporary();
-            let condition_expression_result = Val::Var(condition_expression_result);
+            let condition_expression_result = Value::Var(condition_expression_result);
             instructions.push(Instruction::Copy {
                 source: condition_destination,
                 destination: condition_expression_result.clone(),
@@ -718,8 +745,8 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
                 } = case;
                 match match_value {
                     Some(value) => {
-                        let match_value_expression_result = Val::Constant(value);
-                        let destination = Val::Var(make_temporary());
+                        let match_value_expression_result = Value::Constant(value);
+                        let destination = Value::Var(make_temporary());
                         instructions.push(Instruction::Binary {
                             binary_operator: BinaryOperator::Equal,
                             source1: condition_expression_result.clone(),
@@ -772,9 +799,11 @@ fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
     }
 }
 
-fn convert_declaration(declaration: parser::Declaration) -> Vec<Instruction> {
+fn convert_variable_declaration(
+    variable_declaration: parser::VariableDeclaration,
+) -> Vec<Instruction> {
     let mut tacky_instructions: Vec<Instruction> = vec![];
-    let parser::Declaration::Declaration { identifier, init } = declaration;
+    let parser::VariableDeclaration { identifier, init } = variable_declaration;
     if let Some(unpacked_init) = init {
         let assignment_expression = parser::Expression::Assignment(
             Box::new(parser::Expression::Var {
@@ -783,17 +812,27 @@ fn convert_declaration(declaration: parser::Declaration) -> Vec<Instruction> {
             Box::new(unpacked_init),
         );
         let (instructions, ..) = convert_expression(assignment_expression);
-
         tacky_instructions.extend(instructions);
     }
     tacky_instructions
 }
 
+fn convert_declaration(declaration: parser::Declaration) -> Vec<Instruction> {
+    match declaration {
+        parser::Declaration::VariableDeclaration(variable_declaration) => {
+            convert_variable_declaration(variable_declaration)
+        }
+        parser::Declaration::FunctionDeclaration(..) => {
+            vec![]
+        }
+    }
+}
+
 fn convert_for_init(for_init: parser::ForInit) -> Vec<Instruction> {
     let mut tacky_instructions: Vec<Instruction> = vec![];
     match for_init {
-        parser::ForInit::InitialDeclaration(declaration) => {
-            let instructions = convert_declaration(declaration);
+        parser::ForInit::InitialDeclaration(variable_declaration) => {
+            let instructions = convert_variable_declaration(variable_declaration);
             tacky_instructions.extend(instructions);
         }
         parser::ForInit::InitialOptionalExpression(optional_expression) => {
@@ -827,20 +866,29 @@ fn convert_block(block: parser::Block) -> Vec<Instruction> {
 }
 
 fn convert_function_definition(
-    function_definition: parser::FunctionDefinition,
-) -> FunctionDefinition {
+    function_definition: parser::FunctionDeclaration,
+) -> Option<FunctionDefinition> {
     match function_definition {
-        parser::FunctionDefinition::Function { identifier, body } => {
+        parser::FunctionDeclaration {
+            identifier,
+            parameters,
+            body,
+        } => {
             let mut tacky_body: Vec<Instruction> = vec![];
-            tacky_body.extend(convert_block(body));
+            if let Some(body) = body {
+                tacky_body.extend(convert_block(body));
 
-            // expected behavior for main when not explicitly specified
-            // and handles missing return statement. This line is bypassed when a return statement is already given
-            tacky_body.push(Instruction::Return(Val::Constant(0)));
+                // expected behavior for main when not explicitly specified
+                // and handles missing return statement. Execution of this line is bypassed when a return statement is already given
+                tacky_body.push(Instruction::Return(Value::Constant(0)));
 
-            FunctionDefinition::Function {
-                identifier,
-                instructions: tacky_body,
+                Some(FunctionDefinition::Function {
+                    identifier,
+                    parameters,
+                    instructions: tacky_body,
+                })
+            } else {
+                None
             }
         }
     }
@@ -848,9 +896,12 @@ fn convert_function_definition(
 
 fn convert_program(program: parser::Program) -> Program {
     match program {
-        parser::Program::Program(function_definition) => {
-            Program::Program(convert_function_definition(function_definition))
-        }
+        parser::Program::Program(function_definitions) => Program::Program(
+            function_definitions
+                .into_iter()
+                .filter_map(|f| convert_function_definition(f))
+                .collect(),
+        ),
     }
 }
 fn convert_ast(ast: parser::AbstractSyntaxTree) -> TackyAbstractSyntaxTree {

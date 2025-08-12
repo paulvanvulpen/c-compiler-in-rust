@@ -9,13 +9,17 @@ impl visualize::Visualizer for assembly_generator::AssemblyAbstractSyntaxTree {
 
 impl visualize::Visualizer for assembly_generator::Program {
     fn visualize(&self, depth: u8) -> String {
-        let assembly_generator::Program::Program(function_definition) = self;
-        String::from(format!(
+        let assembly_generator::Program::Program(function_definitions) = self;
+        format!(
             "Program(\n\
-		{}\n\
+		{}\
 		)",
-            function_definition.visualize(depth + 1)
-        ))
+            function_definitions
+                .iter()
+                .map(|f| f.visualize(depth + 1))
+                .collect::<Vec<String>>()
+                .join("\n")
+        )
     }
 }
 
@@ -24,6 +28,7 @@ impl visualize::Visualizer for assembly_generator::FunctionDefinition {
         let assembly_generator::FunctionDefinition::Function {
             identifier,
             instructions,
+            ..
         } = self;
         let prefix = "    ".repeat(depth as usize);
         let instructions_str = instructions
@@ -97,6 +102,15 @@ impl visualize::Visualizer for assembly_generator::Instruction {
             assembly_generator::Instruction::AllocateStack(int) => {
                 format!("AllocateStack({})", int)
             }
+            assembly_generator::Instruction::DeallocateStack(int) => {
+                format!("DeallocateStack({})", int)
+            }
+            assembly_generator::Instruction::Push(op) => {
+                format!("Push({})", op.visualize(depth + 1))
+            }
+            assembly_generator::Instruction::Call(identifier) => {
+                format!("Call {identifier}")
+            }
             assembly_generator::Instruction::Ret => String::from("Ret"),
         }
     }
@@ -108,6 +122,10 @@ impl visualize::Visualizer for assembly_generator::Register {
             assembly_generator::Register::AX => String::from("Reg(AX)"),
             assembly_generator::Register::CX => String::from("Reg(CX)"),
             assembly_generator::Register::DX => String::from("Reg(DX)"),
+            assembly_generator::Register::DI => String::from("Reg(DI)"),
+            assembly_generator::Register::SI => String::from("Reg(SI)"),
+            assembly_generator::Register::R8 => String::from("Reg(R8)"),
+            assembly_generator::Register::R9 => String::from("Reg(R9)"),
             assembly_generator::Register::R10 => String::from("Reg(R10)"),
             assembly_generator::Register::R11 => String::from("Reg(R11)"),
         }
