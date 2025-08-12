@@ -5,7 +5,7 @@ use std::path::Path;
 
 use lazy_static::lazy_static;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Identifier(String),
     Constant(usize),
