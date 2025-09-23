@@ -10,6 +10,7 @@ mod visualize;
 // variable_declaration = (identifier name, exp? init, storage_class?)
 // function_declaration = (identifier name, identifier* params, block? body, storage_class?)
 // storage_class = Static | Extern
+// type = Int
 // block_item = S(statement) | D(declaration)
 // block = Block(block_item*)
 // for_init = InitDecl(variable_declaration), InitExp(exp?)
@@ -300,6 +301,7 @@ fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [T
     }
 }
 
+// <type> ::= "int"
 fn parse_type(lexer_tokens: &mut [Token]) -> Result<(Type, &mut [Token])> {
     match &lexer_tokens[0] {
         Token::Int => Ok((Type::Int, &mut lexer_tokens[1..])),
@@ -310,6 +312,7 @@ fn parse_type(lexer_tokens: &mut [Token]) -> Result<(Type, &mut [Token])> {
     }
 }
 
+// <storage_class> ::= "static" | "extern"
 fn parse_storage_class(lexer_tokens: &mut [Token]) -> Result<(StorageClass, &mut [Token])> {
     match &lexer_tokens[0] {
         Token::Static => Ok((StorageClass::Static, &mut lexer_tokens[1..])),
@@ -321,6 +324,7 @@ fn parse_storage_class(lexer_tokens: &mut [Token]) -> Result<(StorageClass, &mut
     }
 }
 
+// <specifier> ::= <type> | <storage_class>
 fn parse_specifiers(
     lexer_tokens: &mut [Token],
 ) -> Result<(Type, Option<StorageClass>, &mut [Token])> {
@@ -330,18 +334,19 @@ fn parse_specifiers(
     loop {
         match &lexer_tokens[0] {
             Token::Static | Token::Extern => {
-                let (storage_class, lexer_tokens) =
+                let storage_class;
+                (storage_class, lexer_tokens) =
                     parse_storage_class(lexer_tokens).context("parsing a specifier")?;
                 storage_classes.push(storage_class)
             }
             Token::Int => {
-                let (type_specifier, lexer_tokens) =
+                let type_specifier;
+                (type_specifier, lexer_tokens) =
                     parse_type(lexer_tokens).context("parsing a specifier")?;
                 types.push(type_specifier)
             }
             _ => break,
         }
-        lexer_tokens = &mut lexer_tokens[1..];
     }
 
     if types.len() != 1 {

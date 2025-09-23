@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="run emit exec" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="buildProfileId" value="test" />
+    <option name="buildProfileId" value="dev" />
     <option name="command" value="run -- &quot;$PROJECT_DIR$/c-programs/return_2.c&quot;" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs />
