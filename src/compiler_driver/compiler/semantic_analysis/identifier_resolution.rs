@@ -51,14 +51,14 @@ fn resolve_local_variable_declaration(
         },
     );
 
-    let mut updated_initialiser: Option<parser::Expression> = None;
+    let mut updated_initializer: Option<parser::Expression> = None;
     if let Some(init) = init {
-        updated_initialiser = Some(resolve_expression(init, identifier_map)?);
+        updated_initializer = Some(resolve_expression(init, identifier_map)?);
     }
 
     Ok(parser::VariableDeclaration {
         identifier: unique_name,
-        init: updated_initialiser,
+        init: updated_initializer,
         storage_class,
     })
 }

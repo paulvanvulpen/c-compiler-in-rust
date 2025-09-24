@@ -1,7 +1,7 @@
 use super::parser;
-use crate::compiler_driver::compiler::symbol_table::{Symbol, SymbolState};
+use crate::compiler_driver::compiler::symbol_table::{IdentifierAttributes, Symbol, SymbolState};
 use anyhow::{Context, bail};
-use std::collections::HashMap;
+use std::collections::hash_map::{Entry, HashMap};
 
 fn type_check_variable_declaration(
     variable_declaration: &parser::VariableDeclaration,
@@ -32,41 +32,65 @@ fn type_check_function_declaration(
         identifier,
         parameters,
         body,
+        storage_class,
     } = function_declaration;
 
-    let this_declaration = SymbolState {
-        symbol_type: Symbol::FuncType {
-            param_count: parameters.len(),
-        },
-        is_defined: false,
+    let this_declaration_symbol_type = Symbol::FuncType {
+        param_count: parameters.len(),
     };
 
-    let mut already_defined = false;
-    if symbol_table.contains_key(identifier) {
-        let old_function_declaration = &symbol_table[identifier];
-        if old_function_declaration.symbol_type != this_declaration.symbol_type {
-            bail!(
-                "Incompatible function declaration {:?} and {:?} for {}",
-                old_function_declaration.symbol_type,
-                this_declaration.symbol_type,
-                identifier
-            )
+    let is_this_declaration_global = !matches!(storage_class, Some(parser::StorageClass::Static));
+
+    match symbol_table.entry(identifier.clone()) {
+        Entry::Occupied(mut entry) => {
+            let old = entry.get();
+
+            if old.symbol_type != this_declaration_symbol_type {
+                bail!(
+                    "Incompatible function declaration {:?} and {:?} for {}",
+                    old.symbol_type,
+                    this_declaration_symbol_type,
+                    identifier
+                )
+            }
+
+            if let IdentifierAttributes::FuncAttribute {
+                is_defined: old_function_declaration_is_defined,
+                is_global: old_function_declaration_is_global,
+            } = old.identifier_attributes
+            {
+                if old_function_declaration_is_defined && body.is_some() {
+                    bail!(
+                        "Function with name {} is defined more than once",
+                        identifier
+                    )
+                }
+
+                if old_function_declaration_is_global
+                    && matches!(storage_class, Some(parser::StorageClass::Static))
+                {
+                    bail!("Static function declaration follows non-static")
+                }
+
+                entry.insert(SymbolState {
+                    symbol_type: this_declaration_symbol_type,
+                    identifier_attributes: IdentifierAttributes::FuncAttribute {
+                        is_defined: old_function_declaration_is_defined || body.is_some(),
+                        is_global: old_function_declaration_is_global,
+                    },
+                });
+            }
         }
-        already_defined = old_function_declaration.is_defined;
-        if already_defined && body.is_some() {
-            bail!(
-                "Function with name {} is defined more than once",
-                identifier
-            )
+        Entry::Vacant(e) => {
+            e.insert(SymbolState {
+                symbol_type: this_declaration_symbol_type,
+                identifier_attributes: IdentifierAttributes::FuncAttribute {
+                    is_defined: body.is_some(),
+                    is_global: is_this_declaration_global,
+                },
+            });
         }
     }
-    symbol_table.insert(
-        function_declaration.identifier.clone(),
-        SymbolState {
-            symbol_type: this_declaration.symbol_type,
-            is_defined: already_defined || body.is_some(),
-        },
-    );
 
     if body.is_some() {
         for p in parameters {
@@ -74,7 +98,7 @@ fn type_check_function_declaration(
                 p.clone(),
                 SymbolState {
                     symbol_type: Symbol::Int,
-                    is_defined: true,
+                    identifier_attributes: IdentifierAttributes::LocalAttribute,
                 },
             );
         }
