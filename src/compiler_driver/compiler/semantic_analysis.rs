@@ -12,10 +12,10 @@ use std::collections::HashMap;
 pub fn run_semantic_analysis(
     parser_ast: parser::AbstractSyntaxTree,
 ) -> anyhow::Result<(parser::AbstractSyntaxTree, HashMap<String, SymbolState>)> {
-    let parser::AbstractSyntaxTree::Program(parser::Program::Program(mut function_declarations)) =
+    let parser::AbstractSyntaxTree::Program(parser::Program::Program(mut declarations)) =
         parser_ast;
 
-    function_declarations = identifier_resolution::analyse(function_declarations);
+    declarations = identifier_resolution::analyse(declarations);
     let symbol_table = type_checking::analyse(&function_declarations);
 
     for function in function_declarations.iter_mut() {
