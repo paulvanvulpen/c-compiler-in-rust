@@ -1,17 +1,18 @@
 use super::parser;
-use crate::compiler_driver::compiler::symbol_table::{IdentifierAttributes, Symbol, SymbolState};
+use crate::compiler_driver::compiler::symbol_table;
 use anyhow::{Context, bail};
 use std::collections::hash_map::{Entry, HashMap};
 
-fn type_check_variable_declaration(
+// TODO: probably just deprecate this
+/*fn type_check_variable_declaration(
     variable_declaration: &parser::VariableDeclaration,
-    symbol_table: &mut HashMap<String, SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
 ) -> anyhow::Result<()> {
     let parser::VariableDeclaration { identifier, init } = variable_declaration;
     symbol_table.insert(
         identifier.clone(),
-        SymbolState {
-            symbol_type: Symbol::Int,
+        symbol_table::SymbolState {
+            symbol_type: symbol_table::Symbol::Int,
             is_defined: true,
         },
     );
@@ -22,11 +23,94 @@ fn type_check_variable_declaration(
     }
 
     Ok(())
+}*/
+
+fn type_check_file_scope_variable_declaration(
+    variable_declaration: &parser::VariableDeclaration,
+    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
+) -> anyhow::Result<()> {
+    let parser::VariableDeclaration {
+        identifier,
+        init,
+        storage_class,
+    } = variable_declaration;
+
+    let initial_value = match init {
+        Some(expression) => {
+            if let parser::Expression::Constant(constant) = expression {
+                symbol_table::InitialValue::Initial(*constant)
+            } else {
+                bail!("Non-constant initializer")
+            }
+        }
+        None => {
+            if matches!(storage_class, Some(parser::StorageClass::Extern)) {
+                symbol_table::InitialValue::NoInitializer
+            } else {
+                symbol_table::InitialValue::Tentative
+            }
+        }
+    };
+
+    let is_this_declaration_globally_visible;
+    match symbol_table.entry(identifier.clone()) {
+        Entry::Occupied(mut entry) => {
+            let old = entry.get();
+
+            let this_declaration_symbol_type = symbol_table::Symbol::Int;
+
+            if old.symbol_type != this_declaration_symbol_type {
+                bail!(
+                    "Function redeclared as variable \
+                    {:?} and {:?} for {}",
+                    old.symbol_type,
+                    this_declaration_symbol_type,
+                    identifier
+                )
+            }
+
+            // IF this is a variable that was previously recorded as having static storage duration
+            // meaning it was either
+            // at file scope:
+            //  in which case it doesn't say anything about whether it is globally visible,
+            // or at block scope:
+            //  in which case it is NOT globally visible
+            let is_this_declaration_globally_visible;
+            if let symbol_table::IdentifierAttributes::StaticStorageAttribute {
+                init: old_variable_declaration_init,
+                is_globally_visible: is_old_variable_globally_visible,
+            } = &old.identifier_attributes
+            {
+                is_this_declaration_globally_visible = match storage_class {
+                    Some(storage_class) => match storage_class {
+                        parser::StorageClass::Extern => *is_old_variable_globally_visible,
+                        parser::StorageClass::Static => {
+                            // marks explicitly to not be globally visible
+                            if *is_old_variable_globally_visible {
+                                bail!("Conflicting variable linkage")
+                            }
+                            false
+                        }
+                    },
+                    None => {
+                        // marks explicitly to be globally visible
+                        if !*is_old_variable_globally_visible {
+                            bail!("Conflicting variable linkage")
+                        }
+                        true
+                    }
+                };
+            }
+        }
+        Entry::Vacant(e) => {}
+    }
+
+    Ok(())
 }
 
 fn type_check_function_declaration(
     function_declaration: &parser::FunctionDeclaration,
-    symbol_table: &mut HashMap<String, SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
 ) -> anyhow::Result<()> {
     let parser::FunctionDeclaration {
         identifier,
@@ -35,11 +119,12 @@ fn type_check_function_declaration(
         storage_class,
     } = function_declaration;
 
-    let this_declaration_symbol_type = Symbol::FuncType {
+    let this_declaration_symbol_type = symbol_table::Symbol::FuncType {
         param_count: parameters.len(),
     };
 
-    let is_this_declaration_global = !matches!(storage_class, Some(parser::StorageClass::Static));
+    let mut is_this_declaration_global =
+        !matches!(storage_class, Some(parser::StorageClass::Static));
 
     match symbol_table.entry(identifier.clone()) {
         Entry::Occupied(mut entry) => {
@@ -54,39 +139,41 @@ fn type_check_function_declaration(
                 )
             }
 
-            if let IdentifierAttributes::FuncAttribute {
-                is_defined: old_function_declaration_is_defined,
-                is_global: old_function_declaration_is_global,
+            if let symbol_table::IdentifierAttributes::FuncAttribute {
+                is_defined: is_old_function_declaration_defined,
+                is_globally_visible: is_old_function_declaration_global,
             } = old.identifier_attributes
             {
-                if old_function_declaration_is_defined && body.is_some() {
+                if is_old_function_declaration_defined && body.is_some() {
                     bail!(
                         "Function with name {} is defined more than once",
                         identifier
                     )
                 }
 
-                if old_function_declaration_is_global
+                if is_old_function_declaration_global
                     && matches!(storage_class, Some(parser::StorageClass::Static))
                 {
                     bail!("Static function declaration follows non-static")
                 }
 
-                entry.insert(SymbolState {
+                is_this_declaration_global = is_old_function_declaration_global;
+
+                entry.insert(symbol_table::SymbolState {
                     symbol_type: this_declaration_symbol_type,
-                    identifier_attributes: IdentifierAttributes::FuncAttribute {
-                        is_defined: old_function_declaration_is_defined || body.is_some(),
-                        is_global: old_function_declaration_is_global,
+                    identifier_attributes: symbol_table::IdentifierAttributes::FuncAttribute {
+                        is_defined: is_old_function_declaration_defined || body.is_some(),
+                        is_globally_visible: is_this_declaration_global,
                     },
                 });
             }
         }
         Entry::Vacant(e) => {
-            e.insert(SymbolState {
+            e.insert(symbol_table::SymbolState {
                 symbol_type: this_declaration_symbol_type,
-                identifier_attributes: IdentifierAttributes::FuncAttribute {
+                identifier_attributes: symbol_table::IdentifierAttributes::FuncAttribute {
                     is_defined: body.is_some(),
-                    is_global: is_this_declaration_global,
+                    is_globally_visible: is_this_declaration_global,
                 },
             });
         }
@@ -96,9 +183,9 @@ fn type_check_function_declaration(
         for p in parameters {
             symbol_table.insert(
                 p.clone(),
-                SymbolState {
-                    symbol_type: Symbol::Int,
-                    identifier_attributes: IdentifierAttributes::LocalAttribute,
+                symbol_table::SymbolState {
+                    symbol_type: symbol_table::Symbol::Int,
+                    identifier_attributes: symbol_table::IdentifierAttributes::LocalAttribute,
                 },
             );
         }
@@ -111,7 +198,7 @@ fn type_check_function_declaration(
 
 fn type_check_block(
     block: &parser::Block,
-    symbol_table: &mut HashMap<String, SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
 ) -> anyhow::Result<()> {
     let parser::Block::Block(block) = block;
     for block_item in block {
@@ -122,7 +209,7 @@ fn type_check_block(
 
 fn type_check_block_item(
     block_item: &parser::BlockItem,
-    symbol_table: &mut HashMap<String, SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
 ) -> anyhow::Result<()> {
     match block_item {
         parser::BlockItem::Statement(statement) => {
@@ -138,7 +225,7 @@ fn type_check_block_item(
 
 fn type_check_statement(
     statement: &parser::Statement,
-    symbol_table: &mut HashMap<String, SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
 ) -> anyhow::Result<()> {
     match statement {
         parser::Statement::Return(expression) | parser::Statement::Expression(expression) => {
@@ -213,7 +300,7 @@ fn type_check_statement(
 
 fn type_check_for_init(
     for_init: &parser::ForInit,
-    symbol_table: &mut HashMap<String, SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
 ) -> anyhow::Result<()> {
     match for_init {
         parser::ForInit::InitialDeclaration(variable_declaration) => {
@@ -230,7 +317,7 @@ fn type_check_for_init(
 
 fn type_check_declaration(
     declaration: &parser::Declaration,
-    symbol_table: &mut HashMap<String, SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
 ) -> anyhow::Result<()> {
     match declaration {
         parser::Declaration::VariableDeclaration(variable_declaration) => {
@@ -248,7 +335,7 @@ fn type_check_declaration(
 
 fn type_check_expression(
     expression: &parser::Expression,
-    symbol_table: &mut HashMap<String, SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
 ) -> anyhow::Result<()> {
     match expression {
         parser::Expression::Var { identifier } => {
@@ -264,12 +351,15 @@ fn type_check_expression(
             identifier,
             arguments,
         } => {
-            if matches!(symbol_table[identifier].symbol_type, Symbol::Int) {
+            if matches!(
+                symbol_table[identifier].symbol_type,
+                symbol_table::Symbol::Int
+            ) {
                 bail!("Variable name used as a function!");
             }
             if !matches!(
                 symbol_table[identifier].symbol_type,
-                Symbol::FuncType {
+                symbol_table::Symbol::FuncType {
                     param_count
                 } if param_count == arguments.len()
             ) {
@@ -302,8 +392,8 @@ fn type_check_expression(
 
 pub fn analyse(
     function_declarations: &Vec<parser::FunctionDeclaration>,
-) -> HashMap<String, SymbolState> {
-    let mut symbol_table: HashMap<String, SymbolState> = HashMap::new();
+) -> HashMap<String, symbol_table::SymbolState> {
+    let mut symbol_table: HashMap<String, symbol_table::SymbolState> = HashMap::new();
 
     for function_declaration in function_declarations {
         type_check_function_declaration(function_declaration, &mut symbol_table)

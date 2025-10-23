@@ -5,14 +5,20 @@ pub enum Symbol {
 }
 
 pub enum IdentifierAttributes {
-    FuncAttribute { is_defined: bool, is_global: bool },
-    StaticAttribute { init: InitialValue, is_global: bool },
+    FuncAttribute {
+        is_defined: bool,
+        is_globally_visible: bool,
+    },
+    StaticStorageAttribute {
+        init: InitialValue,
+        is_globally_visible: bool,
+    },
     LocalAttribute,
 }
 
 pub enum InitialValue {
     Tentative,
-    Initial(isize),
+    Initial(usize),
     NoInitializer,
 }
 
