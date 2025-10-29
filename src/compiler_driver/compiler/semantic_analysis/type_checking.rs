@@ -35,7 +35,7 @@ fn type_check_file_scope_variable_declaration(
         storage_class,
     } = variable_declaration;
 
-    let initial_value = match init {
+    let mut initial_value = match init {
         Some(expression) => {
             if let parser::Expression::Constant(constant) = expression {
                 symbol_table::InitialValue::Initial(*constant)
@@ -52,7 +52,6 @@ fn type_check_file_scope_variable_declaration(
         }
     };
 
-    let is_this_declaration_globally_visible;
     match symbol_table.entry(identifier.clone()) {
         Entry::Occupied(mut entry) => {
             let old = entry.get();
@@ -72,16 +71,15 @@ fn type_check_file_scope_variable_declaration(
             // IF this is a variable that was previously recorded as having static storage duration
             // meaning it was either
             // at file scope:
-            //  in which case it doesn't say anything about whether it is globally visible,
+            //  in which case it doesn't say anything about whether it was globally visible,
             // or at block scope:
             //  in which case it is NOT globally visible
-            let is_this_declaration_globally_visible;
             if let symbol_table::IdentifierAttributes::StaticStorageAttribute {
                 init: old_variable_declaration_init,
                 is_globally_visible: is_old_variable_globally_visible,
             } = &old.identifier_attributes
             {
-                is_this_declaration_globally_visible = match storage_class {
+                let is_this_declaration_globally_visible = match storage_class {
                     Some(storage_class) => match storage_class {
                         parser::StorageClass::Extern => *is_old_variable_globally_visible,
                         parser::StorageClass::Static => {
@@ -100,9 +98,43 @@ fn type_check_file_scope_variable_declaration(
                         true
                     }
                 };
+
+                match old_variable_declaration_init {
+                    symbol_table::InitialValue::Initial(..) => {
+                        if let symbol_table::InitialValue::Initial(..) = initial_value {
+                            bail!("Conflicting file scope variable definitions")
+                        }
+                    }
+                    symbol_table::InitialValue::Tentative => {
+                        initial_value = symbol_table::InitialValue::Tentative
+                    }
+                    symbol_table::InitialValue::NoInitializer => {}
+                }
+                symbol_table.insert(
+                    identifier.clone(),
+                    symbol_table::SymbolState {
+                        symbol_type: symbol_table::Symbol::Int,
+                        identifier_attributes:
+                            symbol_table::IdentifierAttributes::StaticStorageAttribute {
+                                init: initial_value,
+                                is_globally_visible: is_this_declaration_globally_visible,
+                            },
+                    },
+                );
             }
         }
-        Entry::Vacant(e) => {}
+        Entry::Vacant(e) => {
+            e.insert(symbol_table::SymbolState {
+                symbol_type: symbol_table::Symbol::Int,
+                identifier_attributes: symbol_table::IdentifierAttributes::StaticStorageAttribute {
+                    init: initial_value,
+                    is_globally_visible: !matches!(
+                        storage_class,
+                        Some(parser::StorageClass::Static)
+                    ),
+                },
+            });
+        }
     }
 
     Ok(())
