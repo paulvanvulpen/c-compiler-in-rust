@@ -18,46 +18,51 @@ pub fn run_semantic_analysis(
     declarations = identifier_resolution::analyse(declarations);
     let symbol_table = type_checking::analyse(&declarations);
 
-    for function in function_declarations.iter_mut() {
-        match &mut function.body {
-            Some(function_body) => {
-                let function_body = std::mem::take(function_body);
-                let function_body = label_resolution::analyse(&function.identifier, function_body)
-                    .with_context(|| {
-                        format!(
-                            "running semantic analysis in function: {}",
-                            &function.identifier
-                        )
-                    })?;
-                function.body = Some(function_body);
-            }
-            None => {
-                continue;
+    for declaration in declarations.iter_mut() {
+        if let parser::Declaration::FunctionDeclaration(function) = declaration {
+            match &mut function.body {
+                Some(function_body) => {
+                    let function_body = std::mem::take(function_body);
+                    let function_body =
+                        label_resolution::analyse(&function.identifier, function_body)
+                            .with_context(|| {
+                                format!(
+                                    "running semantic analysis in function: {}",
+                                    &function.identifier
+                                )
+                            })?;
+                    function.body = Some(function_body);
+                }
+                None => {
+                    continue;
+                }
             }
         }
     }
 
-    for function in function_declarations.iter_mut() {
-        match &mut function.body {
-            Some(function_body) => {
-                let function_body = std::mem::take(function_body);
-                let function_body = loop_labeling::analyse(&function.identifier, function_body)
-                    .with_context(|| {
-                        format!(
-                            "running semantic analysis in function: {}",
-                            &function.identifier
-                        )
-                    })?;
-                function.body = Some(function_body);
-            }
-            None => {
-                continue;
+    for declaration in declarations.iter_mut() {
+        if let parser::Declaration::FunctionDeclaration(function) = declaration {
+            match &mut function.body {
+                Some(function_body) => {
+                    let function_body = std::mem::take(function_body);
+                    let function_body = loop_labeling::analyse(&function.identifier, function_body)
+                        .with_context(|| {
+                            format!(
+                                "running semantic analysis in function: {}",
+                                &function.identifier
+                            )
+                        })?;
+                    function.body = Some(function_body);
+                }
+                None => {
+                    continue;
+                }
             }
         }
     }
 
     Ok((
-        parser::AbstractSyntaxTree::Program(parser::Program::Program(function_declarations)),
+        parser::AbstractSyntaxTree::Program(parser::Program::Program(declarations)),
         symbol_table,
     ))
 }

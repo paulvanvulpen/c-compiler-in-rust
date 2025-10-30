@@ -803,7 +803,11 @@ fn convert_variable_declaration(
     variable_declaration: parser::VariableDeclaration,
 ) -> Vec<Instruction> {
     let mut tacky_instructions: Vec<Instruction> = vec![];
-    let parser::VariableDeclaration { identifier, init } = variable_declaration;
+    let parser::VariableDeclaration {
+        identifier,
+        init,
+        storage_class,
+    } = variable_declaration;
     if let Some(unpacked_init) = init {
         let assignment_expression = parser::Expression::Assignment(
             Box::new(parser::Expression::Var {
@@ -873,6 +877,7 @@ fn convert_function_definition(
             identifier,
             parameters,
             body,
+            storage_class,
         } => {
             let mut tacky_body: Vec<Instruction> = vec![];
             if let Some(body) = body {
@@ -895,14 +900,15 @@ fn convert_function_definition(
 }
 
 fn convert_program(program: parser::Program) -> Program {
-    match program {
-        parser::Program::Program(function_definitions) => Program::Program(
-            function_definitions
-                .into_iter()
-                .filter_map(|f| convert_function_definition(f))
-                .collect(),
-        ),
-    }
+    todo!("didn't get around to this yet");
+    // match program {
+    //     parser::Program::Program(function_definitions) => Program::Program(
+    //         function_definitions
+    //             .into_iter()
+    //             .filter_map(|f| convert_function_definition(f))
+    //             .collect(),
+    //     ),
+    // }
 }
 fn convert_ast(ast: parser::AbstractSyntaxTree) -> TackyAbstractSyntaxTree {
     match ast {

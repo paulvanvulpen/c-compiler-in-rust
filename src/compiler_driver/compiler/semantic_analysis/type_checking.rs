@@ -107,7 +107,7 @@ fn type_check_file_scope_variable_declaration(
     };
 
     match symbol_table.entry(identifier.clone()) {
-        Entry::Occupied(mut entry) => {
+        Entry::Occupied(entry) => {
             let old = entry.get();
 
             let this_declaration_symbol_type = symbol_table::Symbol::Int;

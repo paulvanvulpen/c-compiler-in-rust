@@ -60,10 +60,14 @@ impl visualize::Visualizer for parser::FunctionDeclaration {
         } = self;
         let indent = "    ";
         let prefix = indent.repeat(depth as usize);
+        let storage_class: String = match storage_class {
+            Some(storage_class) => storage_class.visualize(0),
+            None => String::new(),
+        };
         match body {
             Some(block) => {
                 format!(
-                    "{prefix}Function(name={identifier}, params=int {} body=\n\
+                    "{prefix}{storage_class}Function(name={identifier}, params=int {} body=\n\
                     {}\n\
                     {prefix})",
                     parameters.join(", int "),
@@ -72,7 +76,7 @@ impl visualize::Visualizer for parser::FunctionDeclaration {
             }
             None => {
                 format!(
-                    "{prefix}Function(name={identifier}, params=int {})",
+                    "{prefix}{storage_class}Function(name={identifier}, params=int {})",
                     parameters.join(", int "),
                 )
             }
@@ -97,7 +101,7 @@ impl visualize::Visualizer for parser::BlockItem {
 }
 
 impl visualize::Visualizer for parser::StorageClass {
-    fn visualize(&self, depth: u8) -> String {
+    fn visualize(&self, _: u8) -> String {
         match self {
             parser::StorageClass::Extern => "Extern".to_string(),
             parser::StorageClass::Static => "Static".to_string(),

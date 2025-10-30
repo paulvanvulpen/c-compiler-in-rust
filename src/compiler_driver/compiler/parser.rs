@@ -323,7 +323,7 @@ fn parse_specifiers(
 // <function_declaration> ::= { <specifier> }+ <identifier> "(" <param-list> ")" ( <block> | ";")
 fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [Token])> {
     let (.., storage_class, lexer_tokens) =
-        parse_specifiers(lexer_tokens).context("parsing a variable declaration")?;
+        parse_specifiers(lexer_tokens).context("parsing a declaration")?;
 
     let (identifier, lexer_tokens) = parse_identifier(lexer_tokens)?;
     match &lexer_tokens[0] {
@@ -389,47 +389,6 @@ fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [T
             "Syntax error, found token {:?} while parsing a variable declaration",
             &lexer_tokens[0]
         )),
-    }
-}
-
-// <function_declaration> ::= { <specifier> }+ <identifier> "(" <param-list> ")" ( <block> | ";")
-fn parse_function_declaration(
-    lexer_tokens: &mut [Token],
-) -> Result<(FunctionDeclaration, &mut [Token])> {
-    let (.., storage_class, lexer_tokens) =
-        parse_specifiers(lexer_tokens).context("parsing a function")?;
-
-    let (identifier, lexer_tokens) =
-        parse_identifier(lexer_tokens).context("Parsing a function")?;
-    let lexer_tokens =
-        expect(Token::OpenParenthesis, lexer_tokens).context("Parsing a function")?;
-    let (parameters, lexer_tokens) =
-        parse_param_list(lexer_tokens).context("Parsing a function")?;
-    let lexer_tokens =
-        expect(Token::CloseParenthesis, lexer_tokens).context("Parsing a function")?;
-
-    match &mut lexer_tokens[0] {
-        Token::Semicolon => Ok((
-            FunctionDeclaration {
-                identifier,
-                parameters,
-                body: None,
-                storage_class,
-            },
-            &mut lexer_tokens[1..],
-        )),
-        _ => {
-            let (body, lexer_tokens) = parse_block(lexer_tokens).context("Parsing a function")?;
-            Ok((
-                FunctionDeclaration {
-                    identifier,
-                    parameters,
-                    body: Some(body),
-                    storage_class,
-                },
-                lexer_tokens,
-            ))
-        }
     }
 }
 
