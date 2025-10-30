@@ -3,27 +3,81 @@ use crate::compiler_driver::compiler::symbol_table;
 use anyhow::{Context, bail};
 use std::collections::hash_map::{Entry, HashMap};
 
-// TODO: probably just deprecate this
-/*fn type_check_variable_declaration(
+fn type_check_variable_declaration(
     variable_declaration: &parser::VariableDeclaration,
     symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
 ) -> anyhow::Result<()> {
-    let parser::VariableDeclaration { identifier, init } = variable_declaration;
-    symbol_table.insert(
-        identifier.clone(),
-        symbol_table::SymbolState {
-            symbol_type: symbol_table::Symbol::Int,
-            is_defined: true,
-        },
-    );
+    let parser::VariableDeclaration {
+        identifier,
+        init,
+        storage_class,
+    } = variable_declaration;
 
-    if let Some(init) = init {
-        type_check_expression(init, symbol_table)
-            .context("type checking a variable declaration")?;
+    match storage_class {
+        Some(storage_class) => match storage_class {
+            parser::StorageClass::Extern => {
+                if init.is_some() {
+                    bail!("Initializer on local extern variable declaration")
+                }
+                if let Some(old) = symbol_table.get(identifier) {
+                    if old.symbol_type != symbol_table::Symbol::Int {
+                        bail!("Function redeclared as variable")
+                    }
+                } else {
+                    symbol_table.insert(
+                        identifier.clone(),
+                        symbol_table::SymbolState {
+                            symbol_type: symbol_table::Symbol::Int,
+                            identifier_attributes:
+                                symbol_table::IdentifierAttributes::StaticStorageAttribute {
+                                    init: symbol_table::InitialValue::NoInitializer,
+                                    is_globally_visible: true,
+                                },
+                        },
+                    );
+                }
+            }
+            parser::StorageClass::Static => {
+                let initial_value = match init {
+                    Some(expression) => {
+                        if let parser::Expression::Constant(constant) = expression {
+                            symbol_table::InitialValue::Initial(*constant)
+                        } else {
+                            bail!("Non-constant initializer")
+                        }
+                    }
+                    None => symbol_table::InitialValue::Initial(0),
+                };
+                symbol_table.insert(
+                    identifier.clone(),
+                    symbol_table::SymbolState {
+                        symbol_type: symbol_table::Symbol::Int,
+                        identifier_attributes:
+                            symbol_table::IdentifierAttributes::StaticStorageAttribute {
+                                init: initial_value,
+                                is_globally_visible: false,
+                            },
+                    },
+                );
+            }
+        },
+        None => {
+            symbol_table.insert(
+                identifier.clone(),
+                symbol_table::SymbolState {
+                    symbol_type: symbol_table::Symbol::Int,
+                    identifier_attributes: symbol_table::IdentifierAttributes::LocalAttribute,
+                },
+            );
+            if let Some(init) = init {
+                type_check_expression(init, symbol_table)
+                    .context("type checking a variable declaration")?
+            }
+        }
     }
 
     Ok(())
-}*/
+}
 
 fn type_check_file_scope_variable_declaration(
     variable_declaration: &parser::VariableDeclaration,
@@ -373,7 +427,7 @@ fn type_check_expression(
         parser::Expression::Var { identifier } => {
             if matches!(
                 symbol_table[identifier].symbol_type,
-                Symbol::FuncType { .. }
+                symbol_table::Symbol::FuncType { .. }
             ) {
                 bail!("Function name used as a variable!");
             }
