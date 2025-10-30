@@ -16,7 +16,7 @@ pub fn run_semantic_analysis(
         parser_ast;
 
     declarations = identifier_resolution::analyse(declarations);
-    let symbol_table = type_checking::analyse(&function_declarations);
+    let symbol_table = type_checking::analyse(&declarations);
 
     for function in function_declarations.iter_mut() {
         match &mut function.body {

@@ -538,7 +538,13 @@ pub fn analyse(declarations: Vec<parser::Declaration>) -> Vec<parser::Declaratio
         .into_iter()
         .map(|declaration| match declaration {
             parser::Declaration::VariableDeclaration(variable_declaration) => {
-                parser::Declaration::VariableDeclaration(variable_declaration) // placeholder
+                parser::Declaration::VariableDeclaration(
+                    resolve_file_scope_variable_declaration(
+                        variable_declaration,
+                        &mut identifier_map,
+                    )
+                    .unwrap(),
+                )
             }
             parser::Declaration::FunctionDeclaration(function_declaration) => {
                 parser::Declaration::FunctionDeclaration(

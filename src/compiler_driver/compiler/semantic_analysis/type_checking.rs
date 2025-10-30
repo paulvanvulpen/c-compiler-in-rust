@@ -477,14 +477,24 @@ fn type_check_expression(
 }
 
 pub fn analyse(
-    function_declarations: &Vec<parser::FunctionDeclaration>,
+    declarations: &Vec<parser::Declaration>,
 ) -> HashMap<String, symbol_table::SymbolState> {
     let mut symbol_table: HashMap<String, symbol_table::SymbolState> = HashMap::new();
+    //
+    for declaration in declarations {
+        match declaration {
+            parser::Declaration::VariableDeclaration(variable_declaration) => {
+                type_check_file_scope_variable_declaration(variable_declaration, &mut symbol_table)
+                    .context("Type checking a file scope variable declaration")
+                    .unwrap()
+            }
 
-    for function_declaration in function_declarations {
-        type_check_function_declaration(function_declaration, &mut symbol_table)
-            .context("type checking a function")
-            .unwrap()
+            parser::Declaration::FunctionDeclaration(function_declaration) => {
+                type_check_function_declaration(function_declaration, &mut symbol_table)
+                    .context("type checking a function")
+                    .unwrap()
+            }
+        }
     }
 
     symbol_table
