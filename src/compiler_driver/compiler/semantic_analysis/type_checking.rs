@@ -390,6 +390,10 @@ fn type_check_for_init(
 ) -> anyhow::Result<()> {
     match for_init {
         parser::ForInit::InitialDeclaration(variable_declaration) => {
+            let parser::VariableDeclaration { storage_class, .. } = &variable_declaration;
+            if storage_class.is_some() {
+                bail!("for loop header should not contain a storage-class specifier")
+            }
             type_check_variable_declaration(variable_declaration, symbol_table)
         }
         parser::ForInit::InitialOptionalExpression(optional_expression) => {

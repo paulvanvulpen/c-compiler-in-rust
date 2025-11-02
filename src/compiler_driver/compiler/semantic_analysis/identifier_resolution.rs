@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::generator;
 use super::parser;
 use crate::compiler_driver::compiler::visualize::Visualizer;
-use anyhow::{Context, anyhow};
+use anyhow::{Context, anyhow, bail};
 
 fn resolve_local_variable_declaration(
     variable_declaration: parser::VariableDeclaration,
@@ -86,13 +86,19 @@ fn resolve_local_function_declaration(
     identifier_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::FunctionDeclaration> {
     let parser::FunctionDeclaration {
-        identifier, body, ..
+        identifier,
+        body,
+        storage_class,
+        ..
     } = &function_declaration;
     if body.is_some() {
-        return Err(anyhow!(
+        bail!(
             "Function definitions found inside function scope {}!",
             identifier
-        ));
+        )
+    }
+    if matches!(storage_class, Some(parser::StorageClass::Static)) {
+        bail!("block scope function declaration cannot have static specifier")
     }
 
     resolve_function_declaration(function_declaration, identifier_map)

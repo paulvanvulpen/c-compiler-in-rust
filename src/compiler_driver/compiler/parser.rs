@@ -440,7 +440,7 @@ fn parse_block(lexer_tokens: &mut [Token]) -> Result<(Block, &mut [Token])> {
 // <block-item> ::= <statement> | <declaration>
 fn parse_block_item(lexer_tokens: &mut [Token]) -> Result<(BlockItem, &mut [Token])> {
     match &lexer_tokens[0] {
-        Token::Int => {
+        Token::Int | Token::Static | Token::Extern => {
             let (declaration, lexer_tokens) =
                 parse_declaration(lexer_tokens).context("Parsing a block item declaration")?;
             Ok((BlockItem::Declaration(declaration), lexer_tokens))
@@ -456,7 +456,7 @@ fn parse_block_item(lexer_tokens: &mut [Token]) -> Result<(BlockItem, &mut [Toke
 // <for-init> ::= <variable-declaration> | [ <exp> ] ";"
 fn parse_for_init(lexer_tokens: &mut [Token]) -> Result<(ForInit, &mut [Token])> {
     match &lexer_tokens[0] {
-        Token::Int => {
+        Token::Int | Token::Static | Token::Extern => {
             let (declaration, lexer_tokens) =
                 parse_declaration(lexer_tokens).context("Parsing a for_init statement")?;
             if let Declaration::VariableDeclaration(variable_declaration) = declaration {
@@ -742,7 +742,7 @@ fn parse_statement(lexer_tokens: &mut [Token]) -> Result<(Statement, &mut [Token
     }
 }
 
-// <primary> ::= <int> | <identifier> [ <postfix_op> ] | "(" <exp> ")" [ <postfix_op> ] | <identifier> "(" [ <argument-list> ] ")"
+// <primary> ::= <constant> | <identifier> [ <postfix_op> ] | "(" <exp> ")" [ <postfix_op> ] | <identifier> "(" [ <argument-list> ] ")"
 fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token])> {
     match &mut lexer_tokens[0] {
         Token::Constant(constant) => Ok((Expression::Constant(*constant), &mut lexer_tokens[1..])),
