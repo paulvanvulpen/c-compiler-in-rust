@@ -35,7 +35,7 @@ pub fn run_compiler(args: &Args, input_file_path: &Path) -> Result<()> {
         return Ok(());
     }
 
-    let tacky_ast = tacky::run_tacky_generator(ast)?;
+    let tacky_ast = tacky::run_tacky_generator(ast, &symbol_table)?;
     info!("TACKY:\n{}", tacky_ast.visualize(0).as_str());
     if args.tacky {
         return Ok(());

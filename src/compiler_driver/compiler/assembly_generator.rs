@@ -379,12 +379,11 @@ fn convert_parameters(parameters: Vec<String>) -> Vec<Instruction> {
     instructions
 }
 
-fn convert_function_definition(
-    function_definition: tacky::FunctionDefinition,
-) -> FunctionDefinition {
+fn convert_function_definition(function_definition: tacky::TopLevel) -> FunctionDefinition {
     match function_definition {
-        tacky::FunctionDefinition::Function {
+        tacky::TopLevel::Function {
             identifier,
+            is_globally_visible,
             parameters,
             instructions,
         } => {
@@ -404,6 +403,9 @@ fn convert_function_definition(
                 },
                 stack_size: copied_parameter_count * 4,
             }
+        }
+        tacky::TopLevel::StaticVariable(..) => {
+            todo!("not sure yet if this needs to be here, just getting it to compile at this point")
         }
     }
 }

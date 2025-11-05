@@ -23,30 +23,40 @@ impl visualize::Visualizer for tacky::Program {
     }
 }
 
-impl visualize::Visualizer for tacky::FunctionDefinition {
+impl visualize::Visualizer for tacky::TopLevel {
     fn visualize(&self, depth: u8) -> String {
-        let tacky::FunctionDefinition::Function {
-            identifier,
-            parameters,
-            instructions,
-        } = self;
-        let prefix = "    ".repeat(depth as usize);
-        let instructions_str = instructions
-            .iter()
-            .map(|instruction| instruction.visualize(depth + 1))
-            .collect::<Vec<String>>()
-            .join(format!("\n{prefix}        ").as_str());
+        match &self {
+            tacky::TopLevel::Function {
+                identifier,
+                is_globally_visible,
+                parameters,
+                instructions,
+            } => {
+                let prefix = "    ".repeat(depth as usize);
+                let instructions_str = instructions
+                    .iter()
+                    .map(|instruction| instruction.visualize(depth + 1))
+                    .collect::<Vec<String>>()
+                    .join(format!("\n{prefix}        ").as_str());
 
-        format!(
-            "{prefix}Function(\n\
-			{prefix}    name={identifier}\n\
-			{prefix}    params={}\n\
-			{prefix}    instructions=\n\
-			{prefix}        {}\n\
-			{prefix})",
-            parameters.join(", "),
-            instructions_str
-        )
+                format!(
+                    "{prefix}{}Function(\n\
+                    {prefix}    name={identifier}\n\
+                    {prefix}    params={}\n\
+                    {prefix}    instructions=\n\
+                    {prefix}        {}\n\
+                    {prefix})",
+                    if !is_globally_visible {
+                        String::from("static ")
+                    } else {
+                        String::new()
+                    },
+                    parameters.join(", "),
+                    instructions_str
+                )
+            }
+            tacky::TopLevel::StaticVariable(..) => String::new(),
+        }
     }
 }
 
