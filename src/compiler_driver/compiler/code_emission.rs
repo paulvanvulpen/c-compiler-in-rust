@@ -1,5 +1,5 @@
 use super::assembly_generator;
-use crate::compiler_driver::compiler::symbol_table::SymbolState;
+use super::symbol_table::{IdentifierAttributes, SymbolState};
 use std::collections::HashMap;
 use std::io::Write;
 
@@ -31,13 +31,14 @@ fn write_program(
 }
 
 fn write_function(
-    function_definition: assembly_generator::FunctionDefinition,
+    toplevel_definition: assembly_generator::TopLevel,
     symbol_table: &HashMap<String, SymbolState>,
 ) -> String {
     let prefix = "    ";
-    match function_definition {
-        assembly_generator::FunctionDefinition::Function {
+    match toplevel_definition {
+        assembly_generator::TopLevel::Function {
             identifier,
+            is_globally_visible,
             instructions,
             ..
         } => {
@@ -46,13 +47,39 @@ fn write_function(
                 .map(|instruction| write_instruction(instruction, symbol_table))
                 .collect::<Vec<String>>()
                 .join(format!("{prefix}").as_str());
+            let global_directive = if is_globally_visible {
+                format!("{prefix}.globl {identifier}\n")
+            } else {
+                String::new()
+            };
             format!(
-                "{prefix}.globl {identifier}\n\
+                "{global_directive}{prefix}.text\n\
                 {identifier}:\n\
                 {prefix}pushq	%rbp\n\
                 {prefix}movq	%rsp, %rbp\n\
-                {prefix}{}",
-                instructions_str
+                {prefix}{instructions_str}"
+            )
+        }
+        assembly_generator::TopLevel::StaticVariable {
+            identifier,
+            is_globally_visible,
+            init,
+        } => {
+            let global_directive = if is_globally_visible {
+                format!("{prefix}.globl {identifier}\n")
+            } else {
+                String::new()
+            };
+            let (section_directive, section_instruction) = if init != 0 {
+                (String::from(".data"), format!(".long {init}"))
+            } else {
+                (String::from(".bss"), String::from(".zero 4"))
+            };
+            format!(
+                "{global_directive}{prefix}{section_directive}\n\
+                {prefix}.balign 4\n\
+                {identifier}:\n\
+                {prefix}{section_instruction}"
             )
         }
     }
@@ -138,11 +165,17 @@ fn write_instruction(
             format!("pushq\t{}\n", write_operand(operand, 8))
         }
         assembly_generator::Instruction::Call(identifier) => {
-            let SymbolState { is_defined, .. } = &symbol_table[&identifier];
-            format!(
-                "call\t{identifier}{}\n",
-                if !is_defined { "@PLT" } else { "" },
-            )
+            let SymbolState {
+                identifier_attributes,
+                ..
+            } = &symbol_table[&identifier];
+            if let IdentifierAttributes::FuncAttribute { is_defined, .. } = identifier_attributes {
+                return format!(
+                    "call\t{identifier}{}\n",
+                    if !is_defined { "@PLT" } else { "" },
+                );
+            }
+            panic!("Trying to a call an identifier that isn't a function")
         }
         assembly_generator::Instruction::Ret => format!(
             "movq\t%rbp, %rsp\n\
@@ -183,6 +216,7 @@ fn write_operand(operand: assembly_generator::Operand, byte_count: u8) -> String
             panic!("should have been cleaned up in the assembly_generator")
         }
         assembly_generator::Operand::Stack { offset } => format!("{offset}(%rbp)"),
+        assembly_generator::Operand::Data { identifier } => format!("{identifier}(%rip)"),
     }
 }
 

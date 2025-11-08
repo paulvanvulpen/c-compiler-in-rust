@@ -3,16 +3,44 @@ use std::collections::HashMap;
 use super::generator;
 use super::parser;
 use crate::compiler_driver::compiler::visualize::Visualizer;
-use anyhow::{Context, anyhow};
+use anyhow::{Context, anyhow, bail};
 
 fn resolve_local_variable_declaration(
     variable_declaration: parser::VariableDeclaration,
     identifier_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::VariableDeclaration> {
-    let parser::VariableDeclaration { identifier, init } = variable_declaration;
-    if identifier_map.contains_key(&identifier) && identifier_map[&identifier].from_current_scope {
-        return Err(anyhow!("Duplicate declaration: {}!", &identifier));
+    let parser::VariableDeclaration {
+        identifier,
+        init,
+        storage_class,
+    } = variable_declaration;
+
+    // at block scope, the static keyword indicates storage duration, not linkage
+    let has_external_linkage = matches!(storage_class, Some(parser::StorageClass::Extern));
+
+    if identifier_map.contains_key(&identifier)
+        && identifier_map[&identifier].from_current_scope
+        && !(identifier_map[&identifier].has_linkage && has_external_linkage)
+    {
+        return Err(anyhow!("Conflicting local declarations: {}!", &identifier));
     }
+
+    if has_external_linkage {
+        identifier_map.insert(
+            identifier.clone(),
+            NameAndScope {
+                unique_name: identifier.clone(),
+                from_current_scope: true,
+                has_linkage: true,
+            },
+        );
+        return Ok(parser::VariableDeclaration {
+            identifier,
+            init,
+            storage_class,
+        });
+    }
+
     let unique_name = generator::make_temporary_from_identifier(&identifier);
     identifier_map.insert(
         identifier.clone(),
@@ -23,15 +51,34 @@ fn resolve_local_variable_declaration(
         },
     );
 
-    let mut updated_initialiser: Option<parser::Expression> = None;
+    let mut updated_initializer: Option<parser::Expression> = None;
     if let Some(init) = init {
-        updated_initialiser = Some(resolve_expression(init, identifier_map)?);
+        updated_initializer = Some(resolve_expression(init, identifier_map)?);
     }
 
     Ok(parser::VariableDeclaration {
         identifier: unique_name,
-        init: updated_initialiser,
+        init: updated_initializer,
+        storage_class,
     })
+}
+
+fn resolve_file_scope_variable_declaration(
+    variable_declaration: parser::VariableDeclaration,
+    identifier_map: &mut HashMap<String, NameAndScope>,
+) -> anyhow::Result<parser::VariableDeclaration> {
+    let identifier: &str = &variable_declaration.identifier;
+
+    identifier_map.insert(
+        identifier.to_string(),
+        NameAndScope {
+            unique_name: identifier.to_string(),
+            from_current_scope: true,
+            has_linkage: true,
+        },
+    );
+
+    Ok(variable_declaration)
 }
 
 fn resolve_local_function_declaration(
@@ -39,13 +86,19 @@ fn resolve_local_function_declaration(
     identifier_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::FunctionDeclaration> {
     let parser::FunctionDeclaration {
-        identifier, body, ..
+        identifier,
+        body,
+        storage_class,
+        ..
     } = &function_declaration;
     if body.is_some() {
-        return Err(anyhow!(
+        bail!(
             "Function definitions found inside function scope {}!",
             identifier
-        ));
+        )
+    }
+    if matches!(storage_class, Some(parser::StorageClass::Static)) {
+        bail!("block scope function declaration cannot have static specifier")
     }
 
     resolve_function_declaration(function_declaration, identifier_map)
@@ -59,6 +112,7 @@ fn resolve_function_declaration(
         identifier,
         parameters: params,
         body,
+        storage_class,
     } = function_declaration;
     if identifier_map.contains_key(&identifier)
         && identifier_map[&identifier].from_current_scope
@@ -92,6 +146,7 @@ fn resolve_function_declaration(
             Some(body) => Some(resolve_block(body, &mut copy_of_identifier_map)?),
             None => None,
         },
+        storage_class,
     })
 }
 
@@ -482,13 +537,27 @@ impl Clone for NameAndScope {
     }
 }
 
-pub fn analyse(
-    function_declarations: Vec<parser::FunctionDeclaration>,
-) -> Vec<parser::FunctionDeclaration> {
+pub fn analyse(declarations: Vec<parser::Declaration>) -> Vec<parser::Declaration> {
     let mut identifier_map: HashMap<String, NameAndScope> = HashMap::new();
 
-    function_declarations
+    declarations
         .into_iter()
-        .map(|f| resolve_function_declaration(f, &mut identifier_map).unwrap())
+        .map(|declaration| match declaration {
+            parser::Declaration::VariableDeclaration(variable_declaration) => {
+                parser::Declaration::VariableDeclaration(
+                    resolve_file_scope_variable_declaration(
+                        variable_declaration,
+                        &mut identifier_map,
+                    )
+                    .unwrap(),
+                )
+            }
+            parser::Declaration::FunctionDeclaration(function_declaration) => {
+                parser::Declaration::FunctionDeclaration(
+                    resolve_function_declaration(function_declaration, &mut identifier_map)
+                        .unwrap(),
+                )
+            }
+        })
         .collect()
 }

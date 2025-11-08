@@ -1,11 +1,13 @@
 mod visualize;
 
-use super::generator;
 use super::parser;
+use super::{generator, symbol_table};
+use std::collections::HashMap;
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
-// program = Program (function_definition)
-// function_definition = Function(identifier, instruction* body)
+// program = Program (top_level*)
+// top_level = Function(identifier, bool global, identifier* params, instruction* body)
+//      | StaticVariable(identifier, bool global, int init)
 // instruction = Return(val)
 //      | Unary(unary_operator, val src, val dst)
 //      | Binary(binary_operator, val src1, val src2, val dst)
@@ -23,15 +25,23 @@ pub enum TackyAbstractSyntaxTree {
 }
 
 pub enum Program {
-    Program(Vec<FunctionDefinition>),
+    Program(Vec<TopLevel>),
 }
 
-pub enum FunctionDefinition {
+pub enum TopLevel {
     Function {
         identifier: String,
+        is_globally_visible: bool,
         parameters: Vec<String>,
         instructions: Vec<Instruction>,
     },
+    StaticVariable(StaticVariable),
+}
+
+pub struct StaticVariable {
+    pub identifier: String,
+    pub is_globally_visible: bool,
+    pub init: usize,
 }
 
 pub enum Instruction {
@@ -803,8 +813,14 @@ fn convert_variable_declaration(
     variable_declaration: parser::VariableDeclaration,
 ) -> Vec<Instruction> {
     let mut tacky_instructions: Vec<Instruction> = vec![];
-    let parser::VariableDeclaration { identifier, init } = variable_declaration;
-    if let Some(unpacked_init) = init {
+    let parser::VariableDeclaration {
+        identifier,
+        init,
+        storage_class,
+    } = variable_declaration;
+    if storage_class.is_none()
+        && let Some(unpacked_init) = init
+    {
         let assignment_expression = parser::Expression::Assignment(
             Box::new(parser::Expression::Var {
                 identifier: identifier.clone(),
@@ -865,15 +881,18 @@ fn convert_block(block: parser::Block) -> Vec<Instruction> {
     tacky_instructions
 }
 
-fn convert_function_definition(
-    function_definition: parser::FunctionDeclaration,
-) -> Option<FunctionDefinition> {
-    match function_definition {
-        parser::FunctionDeclaration {
-            identifier,
-            parameters,
-            body,
-        } => {
+fn convert_file_scope_declaration(
+    declaration: parser::Declaration,
+    symbol_table: &HashMap<String, symbol_table::SymbolState>,
+) -> Option<TopLevel> {
+    match declaration {
+        parser::Declaration::FunctionDeclaration(function_declaration) => {
+            let parser::FunctionDeclaration {
+                identifier,
+                parameters,
+                body,
+                ..
+            } = function_declaration;
             let mut tacky_body: Vec<Instruction> = vec![];
             if let Some(body) = body {
                 tacky_body.extend(convert_block(body));
@@ -882,8 +901,22 @@ fn convert_function_definition(
                 // and handles missing return statement. Execution of this line is bypassed when a return statement is already given
                 tacky_body.push(Instruction::Return(Value::Constant(0)));
 
-                Some(FunctionDefinition::Function {
-                    identifier,
+                Some(TopLevel::Function {
+                    identifier: identifier.clone(),
+                    is_globally_visible: {
+                        let symbol = symbol_table.get(&identifier)?;
+                        if let symbol_table::IdentifierAttributes::FuncAttribute {
+                            is_globally_visible,
+                            ..
+                        } = &symbol.identifier_attributes
+                        {
+                            *is_globally_visible
+                        } else {
+                            unreachable!(
+                                "A function declaration missing function attribute in symbol table"
+                            )
+                        }
+                    },
                     parameters,
                     instructions: tacky_body,
                 })
@@ -891,30 +924,74 @@ fn convert_function_definition(
                 None
             }
         }
+        parser::Declaration::VariableDeclaration(..) => None,
     }
 }
 
-fn convert_program(program: parser::Program) -> Program {
+fn convert_symbols(
+    symbol_table: &HashMap<String, symbol_table::SymbolState>,
+) -> Vec<StaticVariable> {
+    symbol_table
+        .into_iter()
+        .filter_map(
+            |(identifier, symbol_state)| match &symbol_state.identifier_attributes {
+                symbol_table::IdentifierAttributes::StaticStorageAttribute {
+                    init,
+                    is_globally_visible,
+                } => match init {
+                    symbol_table::InitialValue::Initial(i) => Some(StaticVariable {
+                        identifier: identifier.clone(),
+                        is_globally_visible: *is_globally_visible,
+                        init: *i,
+                    }),
+                    symbol_table::InitialValue::Tentative => Some(StaticVariable {
+                        identifier: identifier.clone(),
+                        is_globally_visible: *is_globally_visible,
+                        init: 0,
+                    }),
+                    symbol_table::InitialValue::NoInitializer => None,
+                },
+                symbol_table::IdentifierAttributes::FuncAttribute { .. }
+                | symbol_table::IdentifierAttributes::LocalAttribute => None,
+            },
+        )
+        .collect()
+}
+
+fn convert_program(
+    program: parser::Program,
+    symbol_table: &HashMap<String, symbol_table::SymbolState>,
+) -> Program {
     match program {
-        parser::Program::Program(function_definitions) => Program::Program(
-            function_definitions
+        parser::Program::Program(declarations) => {
+            let function_definitions = declarations.into_iter().filter_map(|declaration| {
+                convert_file_scope_declaration(declaration, symbol_table)
+            });
+
+            let mut top_level = convert_symbols(symbol_table)
                 .into_iter()
-                .filter_map(|f| convert_function_definition(f))
-                .collect(),
-        ),
+                .map(|static_variable| TopLevel::StaticVariable(static_variable))
+                .collect::<Vec<TopLevel>>();
+            top_level.extend(function_definitions);
+            Program::Program(top_level)
+        }
     }
 }
-fn convert_ast(ast: parser::AbstractSyntaxTree) -> TackyAbstractSyntaxTree {
+fn convert_ast(
+    ast: parser::AbstractSyntaxTree,
+    symbol_table: &HashMap<String, symbol_table::SymbolState>,
+) -> TackyAbstractSyntaxTree {
     match ast {
         parser::AbstractSyntaxTree::Program(program) => {
-            TackyAbstractSyntaxTree::Program(convert_program(program))
+            TackyAbstractSyntaxTree::Program(convert_program(program, symbol_table))
         }
     }
 }
 
 pub fn run_tacky_generator(
     ast: parser::AbstractSyntaxTree,
+    symbol_table: &HashMap<String, symbol_table::SymbolState>,
 ) -> anyhow::Result<TackyAbstractSyntaxTree> {
-    let tacky_ast = convert_ast(ast);
+    let tacky_ast = convert_ast(ast, symbol_table);
     Ok(tacky_ast)
 }

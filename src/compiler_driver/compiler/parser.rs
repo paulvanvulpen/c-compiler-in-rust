@@ -1,14 +1,16 @@
 use super::lexer::Token;
-use anyhow::{Context, Error, Result, anyhow};
+use anyhow::{Context, Error, Result, anyhow, bail};
 use std::mem::discriminant;
 
 mod visualize;
 
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
-// program = Program(function_definition*)
+// program = Program(declaration*)
 // declaration = FuncDecl(function_declaration) | VarDecl(variable_declaration)
-// variable_declaration = (identifier name, exp? init)
-// function_declaration = (identifier name, identifier* params, block? body)
+// variable_declaration = (identifier name, exp? init, storage_class?)
+// function_declaration = (identifier name, identifier* params, block? body, storage_class?)
+// storage_class = Static | Extern
+// type = Int
 // block_item = S(statement) | D(declaration)
 // block = Block(block_item*)
 // for_init = InitDecl(variable_declaration), InitExp(exp?)
@@ -42,23 +44,34 @@ pub enum AbstractSyntaxTree {
 }
 
 pub enum Program {
-    Program(Vec<FunctionDeclaration>),
+    Program(Vec<Declaration>),
+}
+
+pub enum Declaration {
+    VariableDeclaration(VariableDeclaration),
+    FunctionDeclaration(FunctionDeclaration),
 }
 
 pub struct FunctionDeclaration {
     pub identifier: String,
     pub parameters: Vec<String>,
     pub body: Option<Block>,
+    pub storage_class: Option<StorageClass>,
 }
 
 pub struct VariableDeclaration {
     pub identifier: String,
     pub init: Option<Expression>,
+    pub storage_class: Option<StorageClass>,
 }
 
-pub enum Declaration {
-    VariableDeclaration(VariableDeclaration),
-    FunctionDeclaration(FunctionDeclaration),
+pub enum Type {
+    Int,
+}
+
+pub enum StorageClass {
+    Static,
+    Extern,
 }
 
 pub enum Block {
@@ -248,51 +261,70 @@ impl BinaryOperator {
     }
 }
 
-// <program> ::= { <function_declaration> }
+// <program> ::= { <declaration> }
 fn parse_program(mut lexer_tokens: Vec<Token>) -> Result<Program> {
     if lexer_tokens.is_empty() {
         return Err(anyhow!("failed to parse program, no tokens found"));
     }
 
-    let mut function_declarations: Vec<FunctionDeclaration> = vec![];
+    let mut declarations: Vec<Declaration> = vec![];
     let mut lexer_tokens = lexer_tokens.as_mut_slice();
     while !lexer_tokens.is_empty() {
-        let function_declaration;
-        (function_declaration, lexer_tokens) =
-            parse_function_declaration(lexer_tokens).context("parsing a program")?;
-        function_declarations.push(function_declaration);
+        let declaration;
+        (declaration, lexer_tokens) =
+            parse_declaration(lexer_tokens).context("parsing a program")?;
+        declarations.push(declaration);
     }
 
-    Ok(Program::Program(function_declarations))
+    Ok(Program::Program(declarations))
+}
+
+// <specifier> ::= <type> | <storage_class>
+fn parse_specifiers(
+    lexer_tokens: &mut [Token],
+) -> Result<(Type, Option<StorageClass>, &mut [Token])> {
+    let mut types = vec![];
+    let mut storage_classes = vec![];
+    let mut lexer_tokens = lexer_tokens;
+    loop {
+        match &lexer_tokens[0] {
+            Token::Static | Token::Extern => {
+                let storage_class;
+                (storage_class, lexer_tokens) =
+                    parse_storage_class(lexer_tokens).context("parsing a specifier")?;
+                storage_classes.push(storage_class)
+            }
+            Token::Int => {
+                let type_specifier;
+                (type_specifier, lexer_tokens) =
+                    parse_type(lexer_tokens).context("parsing a specifier")?;
+                types.push(type_specifier)
+            }
+            _ => break,
+        }
+    }
+
+    if types.len() != 1 {
+        return Err(anyhow!("invalid type specifier"));
+    }
+    if storage_classes.len() > 1 {
+        return Err(anyhow!("invalid storage class specifier"));
+    }
+
+    Ok((
+        types.into_iter().next().unwrap(),
+        storage_classes.into_iter().next(),
+        lexer_tokens,
+    ))
 }
 
 // <declaration> ::= <variable-declaration> | <function-declaration>
+// <variable-declaration> ::= { <specifier> }+ <identifier> [ "=" <exp> ] ";"
+// <function_declaration> ::= { <specifier> }+ <identifier> "(" <param-list> ")" ( <block> | ";")
 fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [Token])> {
-    match &lexer_tokens[2] {
-        Token::OpenParenthesis => {
-            let (function_declaration, lexer_tokens) =
-                parse_function_declaration(lexer_tokens).context("parsing a declaration")?;
-            Ok((
-                Declaration::FunctionDeclaration(function_declaration),
-                lexer_tokens,
-            ))
-        }
-        _ => {
-            let (variable_declaration, lexer_tokens) =
-                parse_variable_declaration(lexer_tokens).context("parsing a declaration")?;
-            Ok((
-                Declaration::VariableDeclaration(variable_declaration),
-                lexer_tokens,
-            ))
-        }
-    }
-}
+    let (.., storage_class, lexer_tokens) =
+        parse_specifiers(lexer_tokens).context("parsing a declaration")?;
 
-// <variable-declaration> ::= ":int" <identifier> [ "=" <exp> ] ";"
-fn parse_variable_declaration(
-    lexer_tokens: &mut [Token],
-) -> Result<(VariableDeclaration, &mut [Token])> {
-    let lexer_tokens = expect(Token::Int, lexer_tokens)?;
     let (identifier, lexer_tokens) = parse_identifier(lexer_tokens)?;
     match &lexer_tokens[0] {
         Token::Equal => {
@@ -302,64 +334,61 @@ fn parse_variable_declaration(
             let lexer_tokens =
                 expect(Token::Semicolon, lexer_tokens).context("parsing a variable declaration")?;
             Ok((
-                VariableDeclaration {
+                Declaration::VariableDeclaration(VariableDeclaration {
                     identifier,
                     init: Some(expression),
-                },
+                    storage_class,
+                }),
                 lexer_tokens,
             ))
         }
         Token::Semicolon => {
             let lexer_tokens = &mut lexer_tokens[1..];
             Ok((
-                VariableDeclaration {
+                Declaration::VariableDeclaration(VariableDeclaration {
                     identifier,
                     init: None,
-                },
+                    storage_class,
+                }),
                 lexer_tokens,
             ))
+        }
+        Token::OpenParenthesis => {
+            let lexer_tokens = &mut lexer_tokens[1..];
+            let (parameters, lexer_tokens) =
+                parse_param_list(lexer_tokens).context("Parsing a function")?;
+            let lexer_tokens =
+                expect(Token::CloseParenthesis, lexer_tokens).context("Parsing a function")?;
+
+            match &mut lexer_tokens[0] {
+                Token::Semicolon => Ok((
+                    Declaration::FunctionDeclaration(FunctionDeclaration {
+                        identifier,
+                        parameters,
+                        body: None,
+                        storage_class,
+                    }),
+                    &mut lexer_tokens[1..],
+                )),
+                _ => {
+                    let (body, lexer_tokens) =
+                        parse_block(lexer_tokens).context("Parsing a function")?;
+                    Ok((
+                        Declaration::FunctionDeclaration(FunctionDeclaration {
+                            identifier,
+                            parameters,
+                            body: Some(body),
+                            storage_class,
+                        }),
+                        lexer_tokens,
+                    ))
+                }
+            }
         }
         _ => Err(anyhow!(
             "Syntax error, found token {:?} while parsing a variable declaration",
             &lexer_tokens[0]
         )),
-    }
-}
-
-// <function_declaration> ::= "int" <identifier> "(" <param-list> ")" ( <block> | ";")
-fn parse_function_declaration(
-    lexer_tokens: &mut [Token],
-) -> Result<(FunctionDeclaration, &mut [Token])> {
-    let lexer_tokens = expect(Token::Int, lexer_tokens).context("Parsing a function")?;
-    let (identifier, lexer_tokens) =
-        parse_identifier(lexer_tokens).context("Parsing a function")?;
-    let lexer_tokens =
-        expect(Token::OpenParenthesis, lexer_tokens).context("Parsing a function")?;
-    let (parameters, lexer_tokens) =
-        parse_param_list(lexer_tokens).context("Parsing a function")?;
-    let lexer_tokens =
-        expect(Token::CloseParenthesis, lexer_tokens).context("Parsing a function")?;
-
-    match &mut lexer_tokens[0] {
-        Token::Semicolon => Ok((
-            FunctionDeclaration {
-                identifier,
-                parameters,
-                body: None,
-            },
-            &mut lexer_tokens[1..],
-        )),
-        _ => {
-            let (body, lexer_tokens) = parse_block(lexer_tokens).context("Parsing a function")?;
-            Ok((
-                FunctionDeclaration {
-                    identifier,
-                    parameters,
-                    body: Some(body),
-                },
-                lexer_tokens,
-            ))
-        }
     }
 }
 
@@ -411,7 +440,7 @@ fn parse_block(lexer_tokens: &mut [Token]) -> Result<(Block, &mut [Token])> {
 // <block-item> ::= <statement> | <declaration>
 fn parse_block_item(lexer_tokens: &mut [Token]) -> Result<(BlockItem, &mut [Token])> {
     match &lexer_tokens[0] {
-        Token::Int => {
+        Token::Int | Token::Static | Token::Extern => {
             let (declaration, lexer_tokens) =
                 parse_declaration(lexer_tokens).context("Parsing a block item declaration")?;
             Ok((BlockItem::Declaration(declaration), lexer_tokens))
@@ -427,13 +456,17 @@ fn parse_block_item(lexer_tokens: &mut [Token]) -> Result<(BlockItem, &mut [Toke
 // <for-init> ::= <variable-declaration> | [ <exp> ] ";"
 fn parse_for_init(lexer_tokens: &mut [Token]) -> Result<(ForInit, &mut [Token])> {
     match &lexer_tokens[0] {
-        Token::Int => {
-            let (variable_declaration, lexer_tokens) =
-                parse_variable_declaration(lexer_tokens).context("Parsing a for_init statement")?;
-            Ok((
-                ForInit::InitialDeclaration(variable_declaration),
-                lexer_tokens,
-            ))
+        Token::Int | Token::Static | Token::Extern => {
+            let (declaration, lexer_tokens) =
+                parse_declaration(lexer_tokens).context("Parsing a for_init statement")?;
+            if let Declaration::VariableDeclaration(variable_declaration) = declaration {
+                Ok((
+                    ForInit::InitialDeclaration(variable_declaration),
+                    lexer_tokens,
+                ))
+            } else {
+                bail!("Expected a variable declaration but found a function declaration")
+            }
         }
         Token::Semicolon => Ok((
             ForInit::InitialOptionalExpression(None),
@@ -709,7 +742,7 @@ fn parse_statement(lexer_tokens: &mut [Token]) -> Result<(Statement, &mut [Token
     }
 }
 
-// <primary> ::= <int> | <identifier> [ <postfix_op> ] | "(" <exp> ")" [ <postfix_op> ] | <identifier> "(" [ <argument-list> ] ")"
+// <primary> ::= <constant> | <identifier> [ <postfix_op> ] | "(" <exp> ")" [ <postfix_op> ] | <identifier> "(" [ <argument-list> ] ")"
 fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token])> {
     match &mut lexer_tokens[0] {
         Token::Constant(constant) => Ok((Expression::Constant(*constant), &mut lexer_tokens[1..])),
@@ -873,6 +906,29 @@ fn parse_prefix_operator(lexer_tokens: &mut [Token]) -> Result<(UnaryOperator, &
     }
 }
 
+// <type> ::= "int"
+fn parse_type(lexer_tokens: &mut [Token]) -> Result<(Type, &mut [Token])> {
+    match &lexer_tokens[0] {
+        Token::Int => Ok((Type::Int, &mut lexer_tokens[1..])),
+        _ => Err(anyhow!(
+            "Syntax error, found token {:?} while parsing a type",
+            &lexer_tokens[0]
+        )),
+    }
+}
+
+// <storage_class> ::= "static" | "extern"
+fn parse_storage_class(lexer_tokens: &mut [Token]) -> Result<(StorageClass, &mut [Token])> {
+    match &lexer_tokens[0] {
+        Token::Static => Ok((StorageClass::Static, &mut lexer_tokens[1..])),
+        Token::Extern => Ok((StorageClass::Extern, &mut lexer_tokens[1..])),
+        _ => Err(anyhow!(
+            "Syntax error, found token {:?} while parsing a storage class",
+            &lexer_tokens[0]
+        )),
+    }
+}
+
 fn expect(expected: Token, lexer_tokens: &mut [Token]) -> Result<&mut [Token]> {
     match lexer_tokens {
         t if t.is_empty() => Err(anyhow!(
@@ -990,7 +1046,9 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         | Token::Switch
         | Token::Case
         | Token::Comma
-        | Token::Default => None,
+        | Token::Default
+        | Token::Static
+        | Token::Extern => None,
     }
 }
 
@@ -1052,7 +1110,9 @@ fn parse_postfix_operator(lexer_tokens: &[Token]) -> Option<UnaryOperator> {
         | Token::Switch
         | Token::Case
         | Token::Default
-        | Token::Comma => None,
+        | Token::Comma
+        | Token::Static
+        | Token::Extern => None,
     }
 }
 
