@@ -45,7 +45,7 @@ pub fn run_compiler(args: &Args, input_file_path: &Path) -> Result<()> {
         .context("Running the assembly generator.")?;
     info!("ASSEMBLY AST\n{}", assembly_ast.visualize(0).as_str());
 
-    assembly_generator::replace_pseudo_registers(&mut assembly_ast);
+    assembly_generator::replace_pseudo_registers(&mut assembly_ast, &symbol_table);
     info!(
         "ASSEMBLY AST after replace pseudo registers\n{}",
         assembly_ast.visualize(0).as_str()

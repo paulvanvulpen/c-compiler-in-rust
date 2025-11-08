@@ -1,4 +1,4 @@
-use super::tacky;
+use super::{symbol_table, tacky};
 use std::collections::HashMap;
 
 mod visualize;
@@ -33,7 +33,7 @@ const PARAMETER_REGISTERS: [Register; 6] = [
 //              | Ret
 // unary_operator = Neg | Not
 // binary_operator = Add | Sub | Mult
-// operand = Imm(int) | Reg(reg) | Pseudo(identifier) | Stack(int)
+// operand = Imm(int) | Reg(reg) | Pseudo(identifier) | Stack(int) | Data(identifier)
 // cond_code = E | NE | G | GE | L | LE
 // reg = AX | CX | DX | DI | SI | R8 | R8 | R10 | R11
 pub enum AssemblyAbstractSyntaxTree {
@@ -107,6 +107,7 @@ pub enum Operand {
     Register(Register),
     Pseudo { identifier: String },
     Stack { offset: isize },
+    Data { identifier: String },
 }
 
 #[derive(Clone)]
