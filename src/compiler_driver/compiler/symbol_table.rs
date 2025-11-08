@@ -16,6 +16,7 @@ pub enum IdentifierAttributes {
     LocalAttribute,
 }
 
+#[derive(Clone)]
 pub enum InitialValue {
     Tentative,
     Initial(usize),

@@ -129,7 +129,7 @@ fn type_check_file_scope_variable_declaration(
             // or at block scope:
             //  in which case it is NOT globally visible
             if let symbol_table::IdentifierAttributes::StaticStorageAttribute {
-                init: old_variable_declaration_init,
+                init: old_initial_value,
                 is_globally_visible: is_old_variable_globally_visible,
             } = &old.identifier_attributes
             {
@@ -153,17 +153,25 @@ fn type_check_file_scope_variable_declaration(
                     }
                 };
 
-                match old_variable_declaration_init {
-                    symbol_table::InitialValue::Initial(..) => {
-                        if let symbol_table::InitialValue::Initial(..) = initial_value {
-                            bail!("Conflicting file scope variable definitions")
-                        }
+                match (old_initial_value, &mut initial_value) {
+                    (
+                        symbol_table::InitialValue::Initial(..),
+                        symbol_table::InitialValue::Initial(..),
+                    ) => {
+                        bail!("Conflicting file scope variable definitions")
                     }
-                    symbol_table::InitialValue::Tentative => {
-                        initial_value = symbol_table::InitialValue::Tentative
-                    }
-                    symbol_table::InitialValue::NoInitializer => {}
+                    (
+                        symbol_table::InitialValue::Initial(..),
+                        symbol_table::InitialValue::Tentative
+                        | symbol_table::InitialValue::NoInitializer,
+                    ) => initial_value = old_initial_value.clone(),
+                    (
+                        symbol_table::InitialValue::Tentative,
+                        symbol_table::InitialValue::NoInitializer,
+                    ) => initial_value = symbol_table::InitialValue::Tentative,
+                    _ => {}
                 }
+
                 symbol_table.insert(
                     identifier.clone(),
                     symbol_table::SymbolState {
