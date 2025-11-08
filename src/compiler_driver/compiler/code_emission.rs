@@ -31,12 +31,12 @@ fn write_program(
 }
 
 fn write_function(
-    function_definition: assembly_generator::FunctionDefinition,
+    toplevel_definition: assembly_generator::TopLevel,
     symbol_table: &HashMap<String, SymbolState>,
 ) -> String {
     let prefix = "    ";
-    match function_definition {
-        assembly_generator::FunctionDefinition::Function {
+    match toplevel_definition {
+        assembly_generator::TopLevel::Function {
             identifier,
             instructions,
             ..
@@ -54,6 +54,9 @@ fn write_function(
                 {prefix}{}",
                 instructions_str
             )
+        }
+        assembly_generator::TopLevel::StaticVariable { .. } => {
+            todo!("just put this here for now to pass compilation")
         }
     }
 }
@@ -189,6 +192,7 @@ fn write_operand(operand: assembly_generator::Operand, byte_count: u8) -> String
             panic!("should have been cleaned up in the assembly_generator")
         }
         assembly_generator::Operand::Stack { offset } => format!("{offset}(%rbp)"),
+        assembly_generator::Operand::Data { identifier } => identifier,
     }
 }
 

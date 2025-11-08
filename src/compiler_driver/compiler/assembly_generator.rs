@@ -335,6 +335,9 @@ fn convert_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
                     Operand::Stack { .. } => panic!(
                         "stack operations are only produced during the 'replace-pseudo-registers'-pass"
                     ),
+                    Operand::Data { .. } => panic!(
+                        "data operations are only produced during the 'replace-pseudo-registers'-pass"
+                    ),
                 }
             }
             instructions.push(Instruction::Call(identifier));
@@ -477,10 +480,9 @@ pub fn replace_pseudo_registers(
     for top_level_definition in toplevel_definitions {
         match top_level_definition {
             TopLevel::Function {
-                identifier,
-                is_globally_visible,
                 instructions,
                 stack_size,
+                ..
             } => {
                 for instruction in instructions.iter_mut() {
                     match instruction {
@@ -517,11 +519,17 @@ fn fix_invalid_instruction(instruction: Instruction) -> Vec<Instruction> {
     // use R11 to fix the second operand
     match instruction {
         // many instructions can not have both operands be memory addresses
-        Instruction::Mov(op1 @ Operand::Stack { .. }, op2 @ Operand::Stack { .. }) => vec![
+        Instruction::Mov(
+            op1 @ (Operand::Stack { .. } | Operand::Data { .. }),
+            op2 @ (Operand::Stack { .. } | Operand::Data { .. }),
+        ) => vec![
             Instruction::Mov(op1, Operand::Register(Register::R10)),
             Instruction::Mov(Operand::Register(Register::R10), op2),
         ],
-        Instruction::Cmp(op1 @ Operand::Stack { .. }, op2 @ Operand::Stack { .. }) => vec![
+        Instruction::Cmp(
+            op1 @ (Operand::Stack { .. } | Operand::Data { .. }),
+            op2 @ (Operand::Stack { .. } | Operand::Data { .. }),
+        ) => vec![
             Instruction::Mov(op1.clone(), Operand::Register(Register::R10)),
             Instruction::Cmp(Operand::Register(Register::R10), op2),
         ],
@@ -531,15 +539,19 @@ fn fix_invalid_instruction(instruction: Instruction) -> Vec<Instruction> {
             | BinaryOperator::BitAnd
             | BinaryOperator::BitXOr
             | BinaryOperator::BitOr),
-            op1 @ Operand::Stack { .. },
-            op2 @ Operand::Stack { .. },
+            op1 @ (Operand::Stack { .. } | Operand::Data { .. }),
+            op2 @ (Operand::Stack { .. } | Operand::Data { .. }),
         ) => vec![
             Instruction::Mov(op1, Operand::Register(Register::R10)),
             Instruction::Binary(binary_operator, Operand::Register(Register::R10), op2),
         ],
 
         // multiply can not have a memory address as its destination, regardless of its source operand
-        Instruction::Binary(BinaryOperator::Mult, op1, op2 @ Operand::Stack { .. }) => vec![
+        Instruction::Binary(
+            BinaryOperator::Mult,
+            op1,
+            op2 @ (Operand::Stack { .. } | Operand::Data { .. }),
+        ) => vec![
             Instruction::Mov(op2.clone(), Operand::Register(Register::R11)),
             Instruction::Binary(BinaryOperator::Mult, op1, Operand::Register(Register::R11)),
             Instruction::Mov(Operand::Register(Register::R11), op2),
@@ -576,19 +588,23 @@ fn fix_up_instructions(instructions: Vec<Instruction>) -> Vec<Instruction> {
 }
 
 pub fn fix_up_invalid_instructions(assembly_ast: &mut AssemblyAbstractSyntaxTree) {
-    let AssemblyAbstractSyntaxTree::Program(Program::Program(function_definitions)) = assembly_ast;
+    let AssemblyAbstractSyntaxTree::Program(Program::Program(toplevel_definitions)) = assembly_ast;
 
-    for function in function_definitions {
-        let FunctionDefinition::Function {
-            instructions,
-            stack_size,
-            ..
-        } = function;
-        if *stack_size > 0 {
-            instructions.insert(0, Instruction::AllocateStack((*stack_size + 15) & !15))
+    for top_level_definition in toplevel_definitions {
+        match top_level_definition {
+            TopLevel::Function {
+                instructions,
+                stack_size,
+                ..
+            } => {
+                if *stack_size > 0 {
+                    instructions.insert(0, Instruction::AllocateStack((*stack_size + 15) & !15))
+                }
+                let old = std::mem::take(instructions);
+                *instructions = fix_up_instructions(old)
+            }
+            TopLevel::StaticVariable { .. } => continue,
         }
-        let old = std::mem::take(instructions);
-        *instructions = fix_up_instructions(old)
     }
 }
 

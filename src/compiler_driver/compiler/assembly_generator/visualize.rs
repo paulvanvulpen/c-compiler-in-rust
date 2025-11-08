@@ -23,28 +23,45 @@ impl visualize::Visualizer for assembly_generator::Program {
     }
 }
 
-impl visualize::Visualizer for assembly_generator::FunctionDefinition {
+impl visualize::Visualizer for assembly_generator::TopLevel {
     fn visualize(&self, depth: u8) -> String {
-        let assembly_generator::FunctionDefinition::Function {
-            identifier,
-            instructions,
-            ..
-        } = self;
         let prefix = "    ".repeat(depth as usize);
-        let instructions_str = instructions
-            .iter()
-            .map(|instruction| instruction.visualize(depth + 1))
-            .collect::<Vec<String>>()
-            .join(format!("\n{prefix}        ").as_str());
+        match self {
+            assembly_generator::TopLevel::Function {
+                identifier,
+                instructions,
+                ..
+            } => {
+                let instructions_str = instructions
+                    .iter()
+                    .map(|instruction| instruction.visualize(depth + 1))
+                    .collect::<Vec<String>>()
+                    .join(format!("\n{prefix}        ").as_str());
 
-        format!(
-            "{prefix}Function(\n\
-		{prefix}    name={identifier}\n\
-		{prefix}    instructions=\n\
-		{prefix}        {}\n\
-		{prefix})",
-            instructions_str
-        )
+                format!(
+                    "{prefix}Function(\n\
+                    {prefix}    name={identifier}\n\
+                    {prefix}    instructions=\n\
+                    {prefix}        {}\n\
+                    {prefix})",
+                    instructions_str
+                )
+            }
+            assembly_generator::TopLevel::StaticVariable {
+                identifier,
+                is_globally_visible,
+                init,
+            } => {
+                format!(
+                    "{prefix}{}static int {identifier} = {init}",
+                    if *is_globally_visible {
+                        String::from("global")
+                    } else {
+                        String::new()
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -55,6 +72,7 @@ impl visualize::Visualizer for assembly_generator::Operand {
             assembly_generator::Operand::Register(register) => register.visualize(depth + 1),
             assembly_generator::Operand::Pseudo { identifier } => format!("Pseudo({identifier})"),
             assembly_generator::Operand::Stack { offset } => format!("Stack({offset})"),
+            assembly_generator::Operand::Data { identifier } => format!("Data({identifier})"),
         }
     }
 }

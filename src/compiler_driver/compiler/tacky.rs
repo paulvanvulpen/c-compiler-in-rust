@@ -39,9 +39,9 @@ pub enum TopLevel {
 }
 
 pub struct StaticVariable {
-    identifier: String,
-    is_globally_visible: bool,
-    init: usize,
+    pub identifier: String,
+    pub is_globally_visible: bool,
+    pub init: usize,
 }
 
 pub enum Instruction {
