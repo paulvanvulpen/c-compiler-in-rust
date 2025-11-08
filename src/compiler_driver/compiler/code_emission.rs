@@ -38,6 +38,7 @@ fn write_function(
     match toplevel_definition {
         assembly_generator::TopLevel::Function {
             identifier,
+            is_globally_visible,
             instructions,
             ..
         } => {
@@ -46,17 +47,40 @@ fn write_function(
                 .map(|instruction| write_instruction(instruction, symbol_table))
                 .collect::<Vec<String>>()
                 .join(format!("{prefix}").as_str());
+            let global_directive = if is_globally_visible {
+                format!("{prefix}.globl {identifier}\n")
+            } else {
+                String::new()
+            };
             format!(
-                "{prefix}.globl {identifier}\n\
+                "{global_directive}{prefix}.text\n\
                 {identifier}:\n\
                 {prefix}pushq	%rbp\n\
                 {prefix}movq	%rsp, %rbp\n\
-                {prefix}{}",
-                instructions_str
+                {prefix}{instructions_str}"
             )
         }
-        assembly_generator::TopLevel::StaticVariable { .. } => {
-            todo!("just put this here for now to pass compilation")
+        assembly_generator::TopLevel::StaticVariable {
+            identifier,
+            is_globally_visible,
+            init,
+        } => {
+            let global_directive = if is_globally_visible {
+                format!("{prefix}.globl {identifier}\n")
+            } else {
+                String::new()
+            };
+            let (section_directive, section_instruction) = if init != 0 {
+                (String::from(".data"), format!(".long {init}"))
+            } else {
+                (String::from(".bss"), String::from(".zero 4"))
+            };
+            format!(
+                "{global_directive}{prefix}{section_directive}\n\
+                {prefix}.balign 4\n\
+                {identifier}:\n\
+                {prefix}{section_instruction}"
+            )
         }
     }
 }
@@ -192,7 +216,7 @@ fn write_operand(operand: assembly_generator::Operand, byte_count: u8) -> String
             panic!("should have been cleaned up in the assembly_generator")
         }
         assembly_generator::Operand::Stack { offset } => format!("{offset}(%rbp)"),
-        assembly_generator::Operand::Data { identifier } => identifier,
+        assembly_generator::Operand::Data { identifier } => format!("{identifier}(%rip)"),
     }
 }
 
