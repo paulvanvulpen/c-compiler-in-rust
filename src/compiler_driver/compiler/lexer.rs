@@ -9,7 +9,9 @@ use lazy_static::lazy_static;
 pub enum Token {
     Identifier(String),
     Constant(usize),
+    LongIntegerConstant(usize),
     Int,
+    Long,
     Void,
     If,
     Else,
@@ -70,6 +72,7 @@ pub enum Token {
 
 lazy_static! {
     static ref IDENTIFIER_REGEX: Regex = Regex::new(r"^[A-Za-z_]\w*\b").unwrap();
+    static ref LONG_INTEGER_CONSTANT_REGEX: Regex = Regex::new(r"^\d+[lL]\b").unwrap();
     static ref CONSTANT_REGEX: Regex = Regex::new(r"^\d+\b").unwrap();
     static ref DECREMENT_OPERATOR_REGEX: Regex = Regex::new(r"^--").unwrap();
     static ref INCREMENT_OPERATOR_REGEX: Regex = Regex::new(r"^\+\+").unwrap();
@@ -100,6 +103,7 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
         let (token_str, remainder) = partial_line.split_at(token.end());
         return match token_str {
             "int" => (Some(Token::Int), remainder),
+            "long" => (Some(Token::Long), remainder),
             "void" => (Some(Token::Void), remainder),
             "return" => (Some(Token::Return), remainder),
             "if" => (Some(Token::If), remainder),
@@ -117,6 +121,17 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
             "extern" => (Some(Token::Extern), remainder),
             _ => (Some(Token::Identifier(String::from(token_str))), remainder),
         };
+    }
+
+    if let Some(token) = LONG_INTEGER_CONSTANT_REGEX.find(&partial_line) {
+        let (token_str, remainder) = partial_line.split_at(token.end());
+        return (
+            // Regex doesn't support look-ahead, parsing without the [lL] instead
+            Some(Token::LongIntegerConstant(
+                token_str[0..token.end() - 1].parse::<usize>().unwrap(),
+            )),
+            remainder,
+        );
     }
 
     if let Some(token) = CONSTANT_REGEX.find(&partial_line) {

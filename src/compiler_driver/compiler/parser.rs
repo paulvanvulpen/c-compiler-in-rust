@@ -1022,7 +1022,9 @@ fn get_binary_operator_precedence(token: &Token) -> Option<u8> {
         Token::QuestionMark => Some(BinaryOperator::Conditional.precedence()),
         Token::Identifier(_)
         | Token::Constant(_)
+        | Token::LongIntegerConstant(_)
         | Token::Int
+        | Token::Long
         | Token::Void
         | Token::If
         | Token::Else
@@ -1058,7 +1060,9 @@ fn parse_postfix_operator(lexer_tokens: &[Token]) -> Option<UnaryOperator> {
         Token::DoublePlus => Some(UnaryOperator::PostfixIncrement),
         Token::Identifier(_)
         | Token::Constant(_)
+        | Token::LongIntegerConstant(_)
         | Token::Int
+        | Token::Long
         | Token::Void
         | Token::If
         | Token::Else
