@@ -7,10 +7,10 @@ mod visualize;
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program(declaration*)
 // declaration = FuncDecl(function_declaration) | VarDecl(variable_declaration)
-// variable_declaration = (identifier name, exp? init, storage_class?)
-// function_declaration = (identifier name, identifier* params, block? body, storage_class?)
+// variable_declaration = (identifier name, exp? init, type var_type storage_class?)
+// function_declaration = (identifier name, identifier* params, block? body, type fun_type, storage_class?)
 // storage_class = Static | Extern
-// type = Int
+// type = Int | Long | FunType(type* params, type ret)
 // block_item = S(statement) | D(declaration)
 // block = Block(block_item*)
 // for_init = InitDecl(variable_declaration), InitExp(exp?)
@@ -31,6 +31,7 @@ mod visualize;
 //              | Null
 // exp = Constant(int)
 //        | Var(identifier)
+//        | Cast(type target_type, exp)
 //        | Unary(unary_operator, exp)
 //        | Binary(binary_operator, exp, exp)
 //        | Assignment(exp, exp)
@@ -38,6 +39,7 @@ mod visualize;
 //        | FunctionCall(identifier, exp* args)
 // unary_operator = Complement | Negate | Not | PrefixDecrement | PostfixDecrement | PrefixIncrement | PostfixIncrement
 // binary_operator = Add | Subtract | Multiply | Divide | Remainder | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual
+// const = ConstInt(int) | ConstLong(int)
 
 pub enum AbstractSyntaxTree {
     Program(Program),
@@ -56,17 +58,24 @@ pub struct FunctionDeclaration {
     pub identifier: String,
     pub parameters: Vec<String>,
     pub body: Option<Block>,
+    pub function_type: Type,
     pub storage_class: Option<StorageClass>,
 }
 
 pub struct VariableDeclaration {
     pub identifier: String,
     pub init: Option<Expression>,
+    pub variable_type: Type,
     pub storage_class: Option<StorageClass>,
 }
 
 pub enum Type {
     Int,
+    Long,
+    FunType {
+        parameters: Vec<Type>,
+        return_type: Box<Type>,
+    },
 }
 
 pub enum StorageClass {
@@ -162,7 +171,7 @@ pub enum ForInit {
 }
 
 pub enum Expression {
-    Constant(usize),
+    Constant(Constant),
     Var {
         identifier: String,
     },
@@ -194,6 +203,11 @@ pub enum UnaryOperator {
     PostfixDecrement,
     PrefixIncrement,
     PostfixIncrement,
+}
+
+pub enum Constant {
+    ConstInt(usize),
+    ConstLong(usize),
 }
 
 pub enum BinaryOperator {
@@ -280,10 +294,10 @@ fn parse_program(mut lexer_tokens: Vec<Token>) -> Result<Program> {
 }
 
 // <specifier> ::= <type> | <storage_class>
-fn parse_specifiers(
+fn parse_specifier(
     lexer_tokens: &mut [Token],
 ) -> Result<(Type, Option<StorageClass>, &mut [Token])> {
-    let mut types = vec![];
+    let mut type_tokens = vec![];
     let mut storage_classes = vec![];
     let mut lexer_tokens = lexer_tokens;
     loop {
@@ -294,25 +308,24 @@ fn parse_specifiers(
                     parse_storage_class(lexer_tokens).context("parsing a specifier")?;
                 storage_classes.push(storage_class)
             }
-            Token::Int => {
-                let type_specifier;
-                (type_specifier, lexer_tokens) =
-                    parse_type(lexer_tokens).context("parsing a specifier")?;
-                types.push(type_specifier)
+            type_token @ (Token::Int | Token::Long) => {
+                type_tokens.push(type_token.clone());
             }
             _ => break,
         }
     }
 
-    if types.len() != 1 {
+    if type_tokens.is_empty() {
         return Err(anyhow!("invalid type specifier"));
     }
+
     if storage_classes.len() > 1 {
         return Err(anyhow!("invalid storage class specifier"));
     }
 
+    let (type_specifier, _) = parse_type(&mut type_tokens[..]).context("parsing a specifier")?;
     Ok((
-        types.into_iter().next().unwrap(),
+        type_specifier,
         storage_classes.into_iter().next(),
         lexer_tokens,
     ))
@@ -323,7 +336,7 @@ fn parse_specifiers(
 // <function_declaration> ::= { <specifier> }+ <identifier> "(" <param-list> ")" ( <block> | ";")
 fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [Token])> {
     let (.., storage_class, lexer_tokens) =
-        parse_specifiers(lexer_tokens).context("parsing a declaration")?;
+        parse_specifier(lexer_tokens).context("parsing a declaration")?;
 
     let (identifier, lexer_tokens) = parse_identifier(lexer_tokens)?;
     match &lexer_tokens[0] {
@@ -392,7 +405,7 @@ fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [T
     }
 }
 
-// <param-list> ::= "void" | "int" <identifier> { "," "int" <identifier> }
+// <param-list> ::= "void" | { type-specifier }+ <identifier> { "," { type-specifier }+ <identifier> }
 fn parse_param_list(lexer_tokens: &mut [Token]) -> Result<(Vec<String>, &mut [Token])> {
     let mut params: Vec<String> = vec![];
     let mut lexer_tokens = lexer_tokens;
@@ -742,7 +755,11 @@ fn parse_statement(lexer_tokens: &mut [Token]) -> Result<(Statement, &mut [Token
     }
 }
 
-// <primary> ::= <constant> | <identifier> [ <postfix_op> ] | "(" <exp> ")" [ <postfix_op> ] | <identifier> "(" [ <argument-list> ] ")"
+// <primary> ::= <constant>
+//              | <identifier> [ <postfix_op> ]
+//              | "(" { <type-specifier> }+ ")" <primary>
+//              | "(" <exp> ")" [ <postfix_op> ]
+//              | <identifier> "(" [ <argument-list> ] ")"
 fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token])> {
     match &mut lexer_tokens[0] {
         Token::Constant(constant) => Ok((Expression::Constant(*constant), &mut lexer_tokens[1..])),
@@ -906,10 +923,24 @@ fn parse_prefix_operator(lexer_tokens: &mut [Token]) -> Result<(UnaryOperator, &
     }
 }
 
-// <type> ::= "int"
+// <type> ::= "int" | "long"
 fn parse_type(lexer_tokens: &mut [Token]) -> Result<(Type, &mut [Token])> {
+    if lexer_tokens.len() > 1 {
+        match (&lexer_tokens[0], &lexer_tokens[1]) {
+            (Token::Int, Token::Long) | (Token::Long, Token::Int) => {
+                return Ok((Type::Long, &mut lexer_tokens[2..]));
+            }
+            _ => {}
+        }
+    }
+
+    if lexer_tokens.is_empty() {
+        bail!("no tokens found when trying to parse type")
+    }
+
     match &lexer_tokens[0] {
         Token::Int => Ok((Type::Int, &mut lexer_tokens[1..])),
+        Token::Long => Ok((Type::Long, &mut lexer_tokens[1..])),
         _ => Err(anyhow!(
             "Syntax error, found token {:?} while parsing a type",
             &lexer_tokens[0]
