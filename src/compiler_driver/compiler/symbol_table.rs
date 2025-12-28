@@ -1,7 +1,11 @@
 #[derive(Debug, PartialEq)]
 pub enum Symbol {
     Int,
-    FuncType { param_count: usize },
+    Long,
+    FuncType {
+        parameters: Vec<Symbol>,
+        return_type: Box<Symbol>,
+    },
 }
 
 pub enum IdentifierAttributes {
