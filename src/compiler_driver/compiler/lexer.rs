@@ -128,7 +128,7 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
         return (
             // Regex doesn't support look-ahead, parsing without the [lL] instead
             Some(Token::LongIntegerConstant(
-                token_str[0..token.end() - 1].parse::<u64>().unwrap(),
+                token_str[0..token.end() - 1].parse::<usize>().unwrap(),
             )),
             remainder,
         );

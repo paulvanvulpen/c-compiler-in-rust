@@ -3,7 +3,7 @@ pub enum Symbol {
     Int,
     Long,
     FuncType {
-        parameters: Vec<Symbol>,
+        parameter_types: Vec<Symbol>,
         return_type: Box<Symbol>,
     },
 }
