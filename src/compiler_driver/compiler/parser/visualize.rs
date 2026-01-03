@@ -1,4 +1,5 @@
 use crate::compiler_driver::compiler::parser;
+use crate::compiler_driver::compiler::symbol_table;
 use crate::compiler_driver::compiler::visualize;
 
 impl visualize::Visualizer for parser::Program {
@@ -56,6 +57,7 @@ impl visualize::Visualizer for parser::FunctionDeclaration {
             identifier,
             parameters,
             body,
+            function_type,
             storage_class,
         } = self;
         let indent = "    ";
@@ -64,20 +66,30 @@ impl visualize::Visualizer for parser::FunctionDeclaration {
             Some(storage_class) => storage_class.visualize(0),
             None => String::new(),
         };
+        let (return_type, parameters_with_type) = match function_type {
+            parser::symbol_table::Symbol::FuncType{ parameter_types, return_type } => {
+                (return_type, parameter_types.iter().zip(parameters.iter())
+                    .map(|(t, s)| format!("{:?} {}", t, s))
+                    .collect::<Vec<String>>()
+                    .join(", "))
+            },
+            _ => panic!("Not a function type!")
+        };
         match body {
             Some(block) => {
                 format!(
-                    "{prefix}{storage_class}Function(name={identifier}, params=int {} body=\n\
+                    "{prefix}{storage_class}Function(name={identifier}, params= {} body=\n\
                     {}\n\
-                    {prefix})",
-                    parameters.join(", int "),
+                    {prefix}) -> {:?}",
+                    parameters_with_type,
                     block.visualize(depth),
+                    return_type
                 )
             }
             None => {
                 format!(
                     "{prefix}{storage_class}Function(name={identifier}, params=int {})",
-                    parameters.join(", int "),
+                    parameters_with_type,
                 )
             }
         }
@@ -116,26 +128,33 @@ impl visualize::Visualizer for parser::VariableDeclaration {
         let parser::VariableDeclaration {
             identifier,
             init,
+            variable_type,
             storage_class,
         } = self;
         let storage_class: String = match storage_class {
             Some(storage_class) => storage_class.visualize(0),
             None => String::new(),
         };
+        let variable_type = match variable_type {
+            symbol_table::Symbol::Int => "int".to_string(),
+            symbol_table::Symbol::Long => "long".to_string(),
+            symbol_table::Symbol::FuncType {..} => panic!("Function type not expected as variable declaration")
+        };
+
         match init {
             Some(expression) => match expression {
                 parser::Expression::Constant(..) | parser::Expression::Var { .. } => {
                     format!(
-                        "{prefix}{storage_class} int {identifier} = {};",
+                        "{prefix}{storage_class} {variable_type} {identifier} = {};",
                         expression.visualize(0)
                     )
                 }
                 _ => format!(
-                    "{prefix}{storage_class} int {identifier} =\n{};",
+                    "{prefix}{storage_class} {variable_type} {identifier} =\n{};",
                     expression.visualize(depth + 1)
                 ),
             },
-            None => format!("{prefix}{storage_class} int {identifier};"),
+            None => format!("{prefix}{storage_class} {variable_type} {identifier};"),
         }
     }
 }
@@ -312,12 +331,16 @@ impl visualize::Visualizer for parser::Expression {
         let indent = "    ";
         let prefix = indent.repeat(depth as usize);
         match self {
-            parser::Expression::Constant(value) => {
-                format!("Constant({value})")
+            parser::Expression::Constant(constant) => {
+                match constant {
+                    parser::Constant::ConstInt(value) => format!("ConstInt({value})"),
+                    parser::Constant::ConstLong(value) => format!("ConstLong({value})")
+                }
             }
             parser::Expression::Var { identifier } => {
                 format!("Var({identifier})")
             }
+            parser::Expression::Cast { target_type, expression} => format!("{:?}Cast{}", target_type, expression.visualize(depth + 1)),
             parser::Expression::Unary(unary_operator, boxed_expression) => match unary_operator {
                 parser::UnaryOperator::PostfixDecrement
                 | parser::UnaryOperator::PostfixIncrement => format!(
