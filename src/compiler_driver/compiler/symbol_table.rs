@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Symbol {
     Int,
     Long,
@@ -19,11 +19,22 @@ pub enum IdentifierAttributes {
     },
     LocalAttribute,
 }
+#[derive(Clone)]
+pub enum Constant {
+    ConstInt(u32),
+    ConstLong(u64),
+}
+
+impl Default for Constant {
+    fn default() -> Self {
+        Constant::ConstInt(0)
+    }
+}
 
 #[derive(Clone)]
 pub enum InitialValue {
     Tentative,
-    Initial(usize),
+    Initial(Constant),
     NoInitializer,
 }
 

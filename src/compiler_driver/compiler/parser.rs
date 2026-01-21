@@ -163,7 +163,7 @@ pub enum ForInit {
 }
 
 pub enum Expression {
-    Constant(Constant),
+    Constant(symbol_table::Constant),
     Var {
         identifier: String,
     },
@@ -199,17 +199,6 @@ pub enum UnaryOperator {
     PostfixDecrement,
     PrefixIncrement,
     PostfixIncrement,
-}
-
-pub enum Constant {
-    ConstInt(u32),
-    ConstLong(u64),
-}
-
-impl Default for Constant {
-    fn default() -> Self {
-        Constant::ConstInt(0)
-    }
 }
 
 pub enum BinaryOperator {
@@ -315,7 +304,7 @@ fn parse_specifier(
         lexer_tokens = &mut lexer_tokens[1..];
     }
 
-    if type_tokens.is_empty() {
+    if type_tokens.is_empty() || type_tokens.len() > 2 {
         return Err(anyhow!("invalid type specifier"));
     }
 
@@ -327,7 +316,7 @@ fn parse_specifier(
         parse_type_specifier(&mut type_tokens).context("parsing a specifier")?;
 
     let storage_class =
-        parse_storage_class(&mut storage_tokens).context("parsing a specifier")?;
+        if storage_tokens.is_empty() { None } else { parse_storage_class(&mut storage_tokens).context("parsing a specifier")? };
     Ok((
         type_specifier,
         storage_class.into_iter().next(),
@@ -464,7 +453,7 @@ fn parse_block(lexer_tokens: &mut [Token]) -> Result<(Block, &mut [Token])> {
 // <block-item> ::= <statement> | <declaration>
 fn parse_block_item(lexer_tokens: &mut [Token]) -> Result<(BlockItem, &mut [Token])> {
     match &lexer_tokens[0] {
-        Token::Int | Token::Static | Token::Extern => {
+        Token::Int | Token::Long | Token::Static | Token::Extern => {
             let (declaration, lexer_tokens) =
                 parse_declaration(lexer_tokens).context("Parsing a block item declaration")?;
             Ok((BlockItem::Declaration(declaration), lexer_tokens))
@@ -480,7 +469,7 @@ fn parse_block_item(lexer_tokens: &mut [Token]) -> Result<(BlockItem, &mut [Toke
 // <for-init> ::= <variable-declaration> | [ <exp> ] ";"
 fn parse_for_init(lexer_tokens: &mut [Token]) -> Result<(ForInit, &mut [Token])> {
     match &lexer_tokens[0] {
-        Token::Int | Token::Static | Token::Extern => {
+        Token::Int | Token::Long | Token::Static | Token::Extern => {
             let (declaration, lexer_tokens) =
                 parse_declaration(lexer_tokens).context("Parsing a for_init statement")?;
             if let Declaration::VariableDeclaration(variable_declaration) = declaration {
@@ -707,13 +696,13 @@ fn parse_statement(lexer_tokens: &mut [Token]) -> Result<(Statement, &mut [Token
         }
         Token::Case => {
             let lexer_tokens = &mut lexer_tokens[1..];
-            if !matches!(&lexer_tokens[0], Token::IntegerConstant(..)) {
+            if !matches!(&lexer_tokens[0], Token::IntegerConstant(..)) && !matches!(&lexer_tokens[0], Token::LongIntegerConstant(..)) {
                 return Err(anyhow!(
                     "Only supporting positive integer values for now. Missing support for constant-folding"
                 ));
             }
             let match_value: usize = match &lexer_tokens[0] {
-                Token::IntegerConstant(x) => *x,
+                Token::IntegerConstant(x) | Token::LongIntegerConstant(x) => *x,
                 _ => unreachable!("earlier check already guarantees this is a constant"),
             };
             let lexer_tokens = expect(Token::Colon, &mut lexer_tokens[1..])
@@ -779,17 +768,17 @@ fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token]
             }
 
             if *value > (2usize.pow(31) - 1) {
-                Ok((Expression::Constant(Constant::ConstLong(*value as u64)), &mut lexer_tokens[1..]))
+                Ok((Expression::Constant(symbol_table::Constant::ConstLong(*value as u64)), &mut lexer_tokens[1..]))
             }
             else {
-                Ok((Expression::Constant(Constant::ConstInt(*value as u32)), &mut lexer_tokens[1..]))
+                Ok((Expression::Constant(symbol_table::Constant::ConstInt(*value as u32)), &mut lexer_tokens[1..]))
             }
         }
         Token::LongIntegerConstant(value) => {
             if *value > (2usize.pow(63) - 1) {
                 bail!("Constant {:?} is too large to represent as an int or long", &mut lexer_tokens[0])
             }
-            Ok((Expression::Constant(Constant::ConstLong(*value as u64)), &mut lexer_tokens[1..]))
+            Ok((Expression::Constant(symbol_table::Constant::ConstLong(*value as u64)), &mut lexer_tokens[1..]))
         },
         Token::Identifier(identifier) => {
             let identifier = std::mem::take(identifier);
@@ -822,18 +811,29 @@ fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token]
             }
         }
         Token::OpenParenthesis => {
+            //todo!("If it is a type-token, then we need to parse a type specifier, otherwise parse it as an expression");
             let lexer_tokens = &mut lexer_tokens[1..];
-            let (expression, lexer_tokens) =
-                parse_expression(lexer_tokens, 0).context("parsing a primary expression")?;
-            let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
-                .context("parsing a primary expression")?;
-            let mut left = expression;
-            let mut lexer_tokens = lexer_tokens;
-            while let Some(unary_operator) = parse_postfix_operator(&lexer_tokens) {
-                left = Expression::Unary(unary_operator, Box::new(left));
-                lexer_tokens = &mut lexer_tokens[1..];
+            match &lexer_tokens[0] {
+                Token::Int | Token::Long => {
+                    let (symbol, lexer_tokens) = parse_type_specifier(lexer_tokens).context("parsing a primary")?;
+                    let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens).context("parsing a primary")?;
+                    let (primary, lexer_tokens) = parse_primary(lexer_tokens).context("parsing a primary")?;
+                    Ok((Expression::Cast { target_type: symbol, expression: Box::new(primary) }, lexer_tokens))
+                }
+                _ => {
+                    let (expression, lexer_tokens) =
+                        parse_expression(lexer_tokens, 0).context("parsing a primary expression")?;
+                    let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
+                        .context("parsing a primary expression")?;
+                    let mut left = expression;
+                    let mut lexer_tokens = lexer_tokens;
+                    while let Some(unary_operator) = parse_postfix_operator(&lexer_tokens) {
+                        left = Expression::Unary(unary_operator, Box::new(left));
+                        lexer_tokens = &mut lexer_tokens[1..];
+                    }
+                    Ok((left, lexer_tokens))
+                }
             }
-            Ok((left, lexer_tokens))
         }
         _ => Err(anyhow!(
             "Syntax error, found token {:?} while parsing a primary expression",
@@ -878,7 +878,8 @@ fn parse_unary_expression(lexer_tokens: &mut [Token]) -> Result<(Expression, &mu
 }
 
 // <exp> ::= <unary_exp> | <exp> <binop> <exp> | <exp> "?" <exp> ":" <exp>
-fn parse_expression(
+fn
+parse_expression(
     lexer_tokens: &mut [Token],
     min_precedence: u8,
 ) -> Result<(Expression, &mut [Token])> {

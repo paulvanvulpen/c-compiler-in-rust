@@ -333,8 +333,8 @@ impl visualize::Visualizer for parser::Expression {
         match self {
             parser::Expression::Constant(constant) => {
                 match constant {
-                    parser::Constant::ConstInt(value) => format!("ConstInt({value})"),
-                    parser::Constant::ConstLong(value) => format!("ConstLong({value})")
+                    symbol_table::Constant::ConstInt(value) => format!("ConstInt({value})"),
+                    symbol_table::Constant::ConstLong(value) => format!("ConstLong({value})")
                 }
             }
             parser::Expression::Var { identifier } => {

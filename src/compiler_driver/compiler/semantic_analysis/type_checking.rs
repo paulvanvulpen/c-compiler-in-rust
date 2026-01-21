@@ -10,6 +10,7 @@ fn type_check_variable_declaration(
     let parser::VariableDeclaration {
         identifier,
         init,
+        variable_type,
         storage_class,
     } = variable_declaration;
 
@@ -41,12 +42,12 @@ fn type_check_variable_declaration(
                 let initial_value = match init {
                     Some(expression) => {
                         if let parser::Expression::Constant(constant) = expression {
-                            symbol_table::InitialValue::Initial(*constant)
+                            symbol_table::InitialValue::Initial(constant.clone())
                         } else {
                             bail!("Non-constant initializer")
                         }
                     }
-                    None => symbol_table::InitialValue::Initial(0),
+                    None => todo!("perhaps need variable type here rather than just default constant")//symbol_table::InitialValue::Initial(),
                 };
                 symbol_table.insert(
                     identifier.clone(),
@@ -86,13 +87,14 @@ fn type_check_file_scope_variable_declaration(
     let parser::VariableDeclaration {
         identifier,
         init,
+        variable_type,
         storage_class,
     } = variable_declaration;
 
     let mut initial_value = match init {
         Some(expression) => {
             if let parser::Expression::Constant(constant) = expression {
-                symbol_table::InitialValue::Initial(*constant)
+                symbol_table::InitialValue::Initial(constant.clone())
             } else {
                 bail!("Non-constant initializer")
             }
@@ -210,12 +212,11 @@ fn type_check_function_declaration(
         identifier,
         parameters,
         body,
+        function_type,
         storage_class,
     } = function_declaration;
 
-    let this_declaration_symbol_type = symbol_table::Symbol::FuncType {
-        param_count: parameters.len(),
-    };
+    let this_declaration_symbol_type = function_type.clone();
 
     let mut is_this_declaration_global =
         !matches!(storage_class, Some(parser::StorageClass::Static));
@@ -451,15 +452,18 @@ fn type_check_expression(
         } => {
             if matches!(
                 symbol_table[identifier].symbol_type,
-                symbol_table::Symbol::Int
+                symbol_table::Symbol::Int | symbol_table::Symbol::Long
             ) {
                 bail!("Variable name used as a function!");
             }
+            // todo!("I just cheated here to make it compile") it's no longer enough to compare
+            //  argument count, we need to check the types and the return types.
             if !matches!(
-                symbol_table[identifier].symbol_type,
+                &symbol_table[identifier].symbol_type,
                 symbol_table::Symbol::FuncType {
-                    param_count
-                } if param_count == arguments.len()
+                    parameter_types,
+                    ..
+                } if parameter_types.len() == arguments.len()
             ) {
                 bail!("Function called with the wrong number of arguments");
             }
@@ -469,6 +473,7 @@ fn type_check_expression(
             }
             Ok(())
         }
+        parser::Expression::Cast { .. } => todo!("implement this"),
         parser::Expression::Unary(_, expression) => type_check_expression(expression, symbol_table),
         parser::Expression::BinaryOperation {
             left_operand,

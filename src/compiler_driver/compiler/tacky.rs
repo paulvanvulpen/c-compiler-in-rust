@@ -186,13 +186,15 @@ fn make_temporary() -> String {
 fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Value) {
     match expression {
         parser::Expression::Constant(value) => {
-            let instructions: Vec<Instruction> = vec![];
-            (instructions, Value::Constant(value))
+            todo!("reevaluate how to write this")
+            // let instructions: Vec<Instruction> = vec![];
+            // (instructions, Value::Constant(value))
         }
         parser::Expression::Var { identifier } => {
             let instructions: Vec<Instruction> = vec![];
             (instructions, Value::Var(identifier))
         }
+        parser::Expression::Cast {.. } => todo!("not yet implemented"),
         parser::Expression::Unary(unary_operator, boxed_expression) => {
             let unary_operator = convert_unary_operator(unary_operator);
             match unary_operator {
@@ -210,14 +212,14 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Valu
                     convert_expression(parser::Expression::BinaryOperation {
                         binary_operator: parser::BinaryOperator::DifferenceAssign,
                         left_operand: boxed_expression,
-                        right_operand: Box::new(parser::Expression::Constant(1)),
+                        right_operand: Box::new(parser::Expression::Constant(symbol_table::Constant::ConstInt(1))),
                     })
                 }
                 UnaryOperator::PrefixIncrement => {
                     convert_expression(parser::Expression::BinaryOperation {
                         binary_operator: parser::BinaryOperator::SumAssign,
                         left_operand: boxed_expression,
-                        right_operand: Box::new(parser::Expression::Constant(1)),
+                        right_operand: Box::new(parser::Expression::Constant(symbol_table::Constant::ConstInt(1))),
                     })
                 }
                 UnaryOperator::PostfixDecrement | UnaryOperator::PostfixIncrement => {
@@ -816,6 +818,7 @@ fn convert_variable_declaration(
     let parser::VariableDeclaration {
         identifier,
         init,
+        variable_type,
         storage_class,
     } = variable_declaration;
     if storage_class.is_none()
@@ -938,12 +941,17 @@ fn convert_symbols(
                 symbol_table::IdentifierAttributes::StaticStorageAttribute {
                     init,
                     is_globally_visible,
-                } => match init {
-                    symbol_table::InitialValue::Initial(i) => Some(StaticVariable {
-                        identifier: identifier.clone(),
-                        is_globally_visible: *is_globally_visible,
-                        init: *i,
-                    }),
+                } =>
+                    match init {
+                    symbol_table::InitialValue::Initial(constant) => todo!("I just made up the match constant stuff, check it properly once we work with tacky"),
+                    //     Some(StaticVariable {
+                    //     identifier: identifier.clone(),
+                    //     is_globally_visible: *is_globally_visible,
+                    //     init: match constant {
+                    //         symbol_table::Constant::ConstInt( value32 ) => *value32 as usize,
+                    //         symbol_table::Constant::ConstLong(value64) => *value64 as usize,
+                    //     },
+                    // }),
                     symbol_table::InitialValue::Tentative => Some(StaticVariable {
                         identifier: identifier.clone(),
                         is_globally_visible: *is_globally_visible,

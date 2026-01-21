@@ -12,6 +12,7 @@ fn resolve_local_variable_declaration(
     let parser::VariableDeclaration {
         identifier,
         init,
+        variable_type,
         storage_class,
     } = variable_declaration;
 
@@ -37,6 +38,7 @@ fn resolve_local_variable_declaration(
         return Ok(parser::VariableDeclaration {
             identifier,
             init,
+            variable_type,
             storage_class,
         });
     }
@@ -59,6 +61,7 @@ fn resolve_local_variable_declaration(
     Ok(parser::VariableDeclaration {
         identifier: unique_name,
         init: updated_initializer,
+        variable_type,
         storage_class,
     })
 }
@@ -112,6 +115,7 @@ fn resolve_function_declaration(
         identifier,
         parameters: params,
         body,
+        function_type,
         storage_class,
     } = function_declaration;
     if identifier_map.contains_key(&identifier)
@@ -146,6 +150,7 @@ fn resolve_function_declaration(
             Some(body) => Some(resolve_block(body, &mut copy_of_identifier_map)?),
             None => None,
         },
+        function_type,
         storage_class,
     })
 }
@@ -390,6 +395,7 @@ fn resolve_expression(
             }
         }
         parser::Expression::Constant(..) => Ok(expression),
+        parser::Expression::Cast{..} => todo!("implement"),
         parser::Expression::BinaryOperation {
             binary_operator,
             left_operand,
