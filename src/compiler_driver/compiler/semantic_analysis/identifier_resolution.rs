@@ -395,7 +395,14 @@ fn resolve_expression(
             }
         }
         parser::Expression::Constant(..) => Ok(expression),
-        parser::Expression::Cast{..} => todo!("implement"),
+        parser::Expression::Cast {
+            target_type,
+            expression,
+            ..
+        } => Ok(parser::Expression::Cast {
+            target_type,
+            expression: Box::new(resolve_expression(*expression, identifier_map)?),
+        }),
         parser::Expression::BinaryOperation {
             binary_operator,
             left_operand,
