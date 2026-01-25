@@ -1,7 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="run emit assem codegen" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
     <option name="buildProfileId" value="dev" />
-    <option name="command" value="run -- -S &quot;$PROJECT_DIR$/c-programs/return_2.c&quot; --codegen" />
+    <option name="command" value="run -- -S &quot;./c-programs/return_2.c&quot; --codegen" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs />
     <option name="emulateTerminal" value="true" />
