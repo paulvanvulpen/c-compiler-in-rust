@@ -452,7 +452,7 @@ fn convert_ast(ast: tacky::TackyAbstractSyntaxTree) -> AssemblyAbstractSyntaxTre
 
 pub fn replace_pseudo_registers(
     assembly_ast: &mut AssemblyAbstractSyntaxTree,
-    symbol_table: &HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &HashMap<String, symbol_table::Symbol>,
 ) {
     let mut temporary_to_offset: HashMap<String, isize> = HashMap::new();
 

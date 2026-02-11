@@ -1,5 +1,6 @@
 use super::lexer::Token;
 use super::symbol_table;
+use crate::compiler_driver::compiler::symbol_table::Type;
 use anyhow::{Context, Error, Result, anyhow, bail};
 use std::mem::discriminant;
 
@@ -59,14 +60,14 @@ pub struct FunctionDeclaration {
     pub identifier: String,
     pub parameters: Vec<String>,
     pub body: Option<Block>,
-    pub function_type: symbol_table::Symbol,
+    pub function_type: symbol_table::Type,
     pub storage_class: Option<StorageClass>,
 }
 
 pub struct VariableDeclaration {
     pub identifier: String,
     pub init: Option<Expression>,
-    pub variable_type: symbol_table::Symbol,
+    pub variable_type: symbol_table::Type,
     pub storage_class: Option<StorageClass>,
 }
 
@@ -168,7 +169,7 @@ pub enum Expression {
         identifier: String,
     },
     Cast {
-        target_type: symbol_table::Symbol,
+        target_type: symbol_table::Type,
         expression: Box<Expression>,
     },
     Unary(UnaryOperator, Box<Expression>),
@@ -287,14 +288,14 @@ fn parse_program(mut lexer_tokens: Vec<Token>) -> Result<Program> {
 // <specifier> ::= <type-specifier> | <storage_class>
 fn parse_specifier(
     lexer_tokens: &mut [Token],
-) -> Result<(symbol_table::Symbol, Option<StorageClass>, &mut [Token])> {
+) -> Result<(symbol_table::Type, Option<StorageClass>, &mut [Token])> {
     let mut type_tokens = vec![];
     let mut storage_tokens = vec![];
     let mut lexer_tokens = lexer_tokens;
     loop {
         match &lexer_tokens[0] {
             storage_token @ (Token::Static | Token::Extern) => {
-            storage_tokens.push(storage_token.clone())
+                storage_tokens.push(storage_token.clone())
             }
             type_token @ (Token::Int | Token::Long) => {
                 type_tokens.push(type_token.clone());
@@ -315,8 +316,11 @@ fn parse_specifier(
     let (type_specifier, _) =
         parse_type_specifier(&mut type_tokens).context("parsing a specifier")?;
 
-    let storage_class =
-        if storage_tokens.is_empty() { None } else { parse_storage_class(&mut storage_tokens).context("parsing a specifier")? };
+    let storage_class = if storage_tokens.is_empty() {
+        None
+    } else {
+        parse_storage_class(&mut storage_tokens).context("parsing a specifier")?
+    };
     Ok((
         type_specifier,
         storage_class.into_iter().next(),
@@ -374,7 +378,10 @@ fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [T
                         identifier,
                         parameters,
                         body: None,
-                        function_type: symbol_table::Symbol::FuncType { parameter_types: parameter_types, return_type: Box::new(variable_type_specifier_or_return_type_specifier) },
+                        function_type: symbol_table::Type::FuncType {
+                            parameter_types: parameter_types,
+                            return_type: Box::new(variable_type_specifier_or_return_type_specifier),
+                        },
                         storage_class,
                     }),
                     &mut lexer_tokens[1..],
@@ -387,7 +394,12 @@ fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [T
                             identifier,
                             parameters,
                             body: Some(body),
-                            function_type: symbol_table::Symbol::FuncType { parameter_types: parameter_types, return_type: Box::new(variable_type_specifier_or_return_type_specifier) },
+                            function_type: symbol_table::Type::FuncType {
+                                parameter_types: parameter_types,
+                                return_type: Box::new(
+                                    variable_type_specifier_or_return_type_specifier,
+                                ),
+                            },
                             storage_class,
                         }),
                         lexer_tokens,
@@ -403,9 +415,11 @@ fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [T
 }
 
 // <param-list> ::= "void" | { type-specifier }+ <identifier> { "," { type-specifier }+ <identifier> }
-fn parse_parameter_list(lexer_tokens: &mut [Token]) -> Result<(Vec<symbol_table::Symbol>, Vec<String>, &mut [Token])> {
+fn parse_parameter_list(
+    lexer_tokens: &mut [Token],
+) -> Result<(Vec<symbol_table::Type>, Vec<String>, &mut [Token])> {
     let mut parameters: Vec<String> = vec![];
-    let mut parameter_types: Vec<symbol_table::Symbol> = vec![];
+    let mut parameter_types: Vec<symbol_table::Type> = vec![];
     let mut lexer_tokens = lexer_tokens;
     match &lexer_tokens[0] {
         Token::Void => {
@@ -413,7 +427,8 @@ fn parse_parameter_list(lexer_tokens: &mut [Token]) -> Result<(Vec<symbol_table:
         }
         Token::Int | Token::Long => loop {
             let type_specifier;
-            (type_specifier, lexer_tokens) = parse_type_specifier(lexer_tokens).context("Parsing a parameter list")?;
+            (type_specifier, lexer_tokens) =
+                parse_type_specifier(lexer_tokens).context("Parsing a parameter list")?;
             parameter_types.push(type_specifier);
             let identifier;
             (identifier, lexer_tokens) =
@@ -696,7 +711,9 @@ fn parse_statement(lexer_tokens: &mut [Token]) -> Result<(Statement, &mut [Token
         }
         Token::Case => {
             let lexer_tokens = &mut lexer_tokens[1..];
-            if !matches!(&lexer_tokens[0], Token::IntegerConstant(..)) && !matches!(&lexer_tokens[0], Token::LongIntegerConstant(..)) {
+            if !matches!(&lexer_tokens[0], Token::IntegerConstant(..))
+                && !matches!(&lexer_tokens[0], Token::LongIntegerConstant(..))
+            {
                 return Err(anyhow!(
                     "Only supporting positive integer values for now. Missing support for constant-folding"
                 ));
@@ -764,22 +781,36 @@ fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token]
     match &mut lexer_tokens[0] {
         Token::IntegerConstant(value) => {
             if *value > (2usize.pow(63) - 1) {
-                bail!("Constant {:?} is too large to represent as an int or long", &mut lexer_tokens[0])
+                bail!(
+                    "Constant {:?} is too large to represent as an int or long",
+                    &mut lexer_tokens[0]
+                )
             }
 
             if *value > (2usize.pow(31) - 1) {
-                Ok((Expression::Constant(symbol_table::Constant::ConstLong(*value as u64)), &mut lexer_tokens[1..]))
-            }
-            else {
-                Ok((Expression::Constant(symbol_table::Constant::ConstInt(*value as u32)), &mut lexer_tokens[1..]))
+                Ok((
+                    Expression::Constant(symbol_table::Constant::ConstLong(*value as u64)),
+                    &mut lexer_tokens[1..],
+                ))
+            } else {
+                Ok((
+                    Expression::Constant(symbol_table::Constant::ConstInt(*value as u32)),
+                    &mut lexer_tokens[1..],
+                ))
             }
         }
         Token::LongIntegerConstant(value) => {
             if *value > (2usize.pow(63) - 1) {
-                bail!("Constant {:?} is too large to represent as an int or long", &mut lexer_tokens[0])
+                bail!(
+                    "Constant {:?} is too large to represent as an int or long",
+                    &mut lexer_tokens[0]
+                )
             }
-            Ok((Expression::Constant(symbol_table::Constant::ConstLong(*value as u64)), &mut lexer_tokens[1..]))
-        },
+            Ok((
+                Expression::Constant(symbol_table::Constant::ConstLong(*value as u64)),
+                &mut lexer_tokens[1..],
+            ))
+        }
         Token::Identifier(identifier) => {
             let identifier = std::mem::take(identifier);
             let mut lexer_tokens = &mut lexer_tokens[1..];
@@ -815,14 +846,23 @@ fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token]
             let lexer_tokens = &mut lexer_tokens[1..];
             match &lexer_tokens[0] {
                 Token::Int | Token::Long => {
-                    let (symbol, lexer_tokens) = parse_type_specifier(lexer_tokens).context("parsing a primary")?;
-                    let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens).context("parsing a primary")?;
-                    let (primary, lexer_tokens) = parse_primary(lexer_tokens).context("parsing a primary")?;
-                    Ok((Expression::Cast { target_type: symbol, expression: Box::new(primary) }, lexer_tokens))
+                    let (symbol, lexer_tokens) =
+                        parse_type_specifier(lexer_tokens).context("parsing a primary")?;
+                    let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
+                        .context("parsing a primary")?;
+                    let (primary, lexer_tokens) =
+                        parse_primary(lexer_tokens).context("parsing a primary")?;
+                    Ok((
+                        Expression::Cast {
+                            target_type: symbol,
+                            expression: Box::new(primary),
+                        },
+                        lexer_tokens,
+                    ))
                 }
                 _ => {
-                    let (expression, lexer_tokens) =
-                        parse_expression(lexer_tokens, 0).context("parsing a primary expression")?;
+                    let (expression, lexer_tokens) = parse_expression(lexer_tokens, 0)
+                        .context("parsing a primary expression")?;
                     let lexer_tokens = expect(Token::CloseParenthesis, lexer_tokens)
                         .context("parsing a primary expression")?;
                     let mut left = expression;
@@ -878,8 +918,7 @@ fn parse_unary_expression(lexer_tokens: &mut [Token]) -> Result<(Expression, &mu
 }
 
 // <exp> ::= <unary_exp> | <exp> <binop> <exp> | <exp> "?" <exp> ":" <exp>
-fn
-parse_expression(
+fn parse_expression(
     lexer_tokens: &mut [Token],
     min_precedence: u8,
 ) -> Result<(Expression, &mut [Token])> {
@@ -953,13 +992,11 @@ fn parse_prefix_operator(lexer_tokens: &mut [Token]) -> Result<(UnaryOperator, &
 }
 
 // <type-specifier> ::= "int" | "long"
-fn parse_type_specifier(
-    lexer_tokens: &mut [Token],
-) -> Result<(symbol_table::Symbol, &mut [Token])> {
+fn parse_type_specifier(lexer_tokens: &mut [Token]) -> Result<(symbol_table::Type, &mut [Token])> {
     if lexer_tokens.len() > 1 {
         match (&lexer_tokens[0], &lexer_tokens[1]) {
             (Token::Int, Token::Long) | (Token::Long, Token::Int) => {
-                return Ok((symbol_table::Symbol::Long, &mut lexer_tokens[2..]));
+                return Ok((symbol_table::Type::Long, &mut lexer_tokens[2..]));
             }
             _ => {}
         }
@@ -970,8 +1007,8 @@ fn parse_type_specifier(
     }
 
     match &lexer_tokens[0] {
-        Token::Int => Ok((symbol_table::Symbol::Int, &mut lexer_tokens[1..])),
-        Token::Long => Ok((symbol_table::Symbol::Long, &mut lexer_tokens[1..])),
+        Token::Int => Ok((symbol_table::Type::Int, &mut lexer_tokens[1..])),
+        Token::Long => Ok((symbol_table::Type::Long, &mut lexer_tokens[1..])),
         _ => bail!(
             "Syntax error, found token {:?} while parsing a type",
             &lexer_tokens[0]
@@ -984,7 +1021,7 @@ fn parse_storage_class(lexer_tokens: &mut [Token]) -> Result<Option<StorageClass
     match &lexer_tokens[0] {
         Token::Static => Ok(Some(StorageClass::Static)),
         Token::Extern => Ok(Some(StorageClass::Extern)),
-        _ => Ok(None)
+        _ => Ok(None),
     }
 }
 

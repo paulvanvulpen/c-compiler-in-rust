@@ -194,7 +194,7 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Valu
             let instructions: Vec<Instruction> = vec![];
             (instructions, Value::Var(identifier))
         }
-        parser::Expression::Cast {.. } => todo!("not yet implemented"),
+        parser::Expression::Cast { .. } => todo!("not yet implemented"),
         parser::Expression::Unary(unary_operator, boxed_expression) => {
             let unary_operator = convert_unary_operator(unary_operator);
             match unary_operator {
@@ -212,14 +212,18 @@ fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Valu
                     convert_expression(parser::Expression::BinaryOperation {
                         binary_operator: parser::BinaryOperator::DifferenceAssign,
                         left_operand: boxed_expression,
-                        right_operand: Box::new(parser::Expression::Constant(symbol_table::Constant::ConstInt(1))),
+                        right_operand: Box::new(parser::Expression::Constant(
+                            symbol_table::Constant::ConstInt(1),
+                        )),
                     })
                 }
                 UnaryOperator::PrefixIncrement => {
                     convert_expression(parser::Expression::BinaryOperation {
                         binary_operator: parser::BinaryOperator::SumAssign,
                         left_operand: boxed_expression,
-                        right_operand: Box::new(parser::Expression::Constant(symbol_table::Constant::ConstInt(1))),
+                        right_operand: Box::new(parser::Expression::Constant(
+                            symbol_table::Constant::ConstInt(1),
+                        )),
                     })
                 }
                 UnaryOperator::PostfixDecrement | UnaryOperator::PostfixIncrement => {
@@ -886,7 +890,7 @@ fn convert_block(block: parser::Block) -> Vec<Instruction> {
 
 fn convert_file_scope_declaration(
     declaration: parser::Declaration,
-    symbol_table: &HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &HashMap<String, symbol_table::Symbol>,
 ) -> Option<TopLevel> {
     match declaration {
         parser::Declaration::FunctionDeclaration(function_declaration) => {
@@ -931,9 +935,7 @@ fn convert_file_scope_declaration(
     }
 }
 
-fn convert_symbols(
-    symbol_table: &HashMap<String, symbol_table::SymbolState>,
-) -> Vec<StaticVariable> {
+fn convert_symbols(symbol_table: &HashMap<String, symbol_table::Symbol>) -> Vec<StaticVariable> {
     symbol_table
         .into_iter()
         .filter_map(
@@ -968,7 +970,7 @@ fn convert_symbols(
 
 fn convert_program(
     program: parser::Program,
-    symbol_table: &HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &HashMap<String, symbol_table::Symbol>,
 ) -> Program {
     match program {
         parser::Program::Program(declarations) => {
@@ -987,7 +989,7 @@ fn convert_program(
 }
 fn convert_ast(
     ast: parser::AbstractSyntaxTree,
-    symbol_table: &HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &HashMap<String, symbol_table::Symbol>,
 ) -> TackyAbstractSyntaxTree {
     match ast {
         parser::AbstractSyntaxTree::Program(program) => {
@@ -998,7 +1000,7 @@ fn convert_ast(
 
 pub fn run_tacky_generator(
     ast: parser::AbstractSyntaxTree,
-    symbol_table: &HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<TackyAbstractSyntaxTree> {
     let tacky_ast = convert_ast(ast, symbol_table);
     Ok(tacky_ast)

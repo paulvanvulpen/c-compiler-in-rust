@@ -1,10 +1,10 @@
 #[derive(Debug, PartialEq, Clone)]
-pub enum Symbol {
+pub enum Type {
     Int,
     Long,
     FuncType {
-        parameter_types: Vec<Symbol>,
-        return_type: Box<Symbol>,
+        parameter_types: Vec<Type>,
+        return_type: Box<Type>,
     },
 }
 
@@ -38,7 +38,7 @@ pub enum InitialValue {
     NoInitializer,
 }
 
-pub struct SymbolState {
-    pub symbol_type: Symbol,
+pub struct Symbol {
+    pub symbol_type: Type,
     pub identifier_attributes: IdentifierAttributes,
 }

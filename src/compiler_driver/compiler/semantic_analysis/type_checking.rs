@@ -5,7 +5,7 @@ use std::collections::hash_map::{Entry, HashMap};
 
 fn type_check_variable_declaration(
     variable_declaration: &parser::VariableDeclaration,
-    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<()> {
     let parser::VariableDeclaration {
         identifier,
@@ -21,14 +21,14 @@ fn type_check_variable_declaration(
                     bail!("Initializer on local extern variable declaration")
                 }
                 if let Some(old) = symbol_table.get(identifier) {
-                    if old.symbol_type != symbol_table::Symbol::Int {
+                    if old.symbol_type != symbol_table::Type::Int {
                         bail!("Function redeclared as variable")
                     }
                 } else {
                     symbol_table.insert(
                         identifier.clone(),
-                        symbol_table::SymbolState {
-                            symbol_type: symbol_table::Symbol::Int,
+                        symbol_table::Symbol {
+                            symbol_type: symbol_table::Type::Int,
                             identifier_attributes:
                                 symbol_table::IdentifierAttributes::StaticStorageAttribute {
                                     init: symbol_table::InitialValue::NoInitializer,
@@ -47,12 +47,14 @@ fn type_check_variable_declaration(
                             bail!("Non-constant initializer")
                         }
                     }
-                    None => todo!("perhaps need variable type here rather than just default constant")//symbol_table::InitialValue::Initial(),
+                    None => {
+                        todo!("perhaps need variable type here rather than just default constant")
+                    } //symbol_table::InitialValue::Initial(),
                 };
                 symbol_table.insert(
                     identifier.clone(),
-                    symbol_table::SymbolState {
-                        symbol_type: symbol_table::Symbol::Int,
+                    symbol_table::Symbol {
+                        symbol_type: symbol_table::Type::Int,
                         identifier_attributes:
                             symbol_table::IdentifierAttributes::StaticStorageAttribute {
                                 init: initial_value,
@@ -65,8 +67,8 @@ fn type_check_variable_declaration(
         None => {
             symbol_table.insert(
                 identifier.clone(),
-                symbol_table::SymbolState {
-                    symbol_type: symbol_table::Symbol::Int,
+                symbol_table::Symbol {
+                    symbol_type: symbol_table::Type::Int,
                     identifier_attributes: symbol_table::IdentifierAttributes::LocalAttribute,
                 },
             );
@@ -82,7 +84,7 @@ fn type_check_variable_declaration(
 
 fn type_check_file_scope_variable_declaration(
     variable_declaration: &parser::VariableDeclaration,
-    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<()> {
     let parser::VariableDeclaration {
         identifier,
@@ -112,7 +114,7 @@ fn type_check_file_scope_variable_declaration(
         Entry::Occupied(entry) => {
             let old = entry.get();
 
-            let this_declaration_symbol_type = symbol_table::Symbol::Int;
+            let this_declaration_symbol_type = symbol_table::Type::Int;
 
             if old.symbol_type != this_declaration_symbol_type {
                 bail!(
@@ -176,8 +178,8 @@ fn type_check_file_scope_variable_declaration(
 
                 symbol_table.insert(
                     identifier.clone(),
-                    symbol_table::SymbolState {
-                        symbol_type: symbol_table::Symbol::Int,
+                    symbol_table::Symbol {
+                        symbol_type: symbol_table::Type::Int,
                         identifier_attributes:
                             symbol_table::IdentifierAttributes::StaticStorageAttribute {
                                 init: initial_value,
@@ -188,8 +190,8 @@ fn type_check_file_scope_variable_declaration(
             }
         }
         Entry::Vacant(e) => {
-            e.insert(symbol_table::SymbolState {
-                symbol_type: symbol_table::Symbol::Int,
+            e.insert(symbol_table::Symbol {
+                symbol_type: symbol_table::Type::Int,
                 identifier_attributes: symbol_table::IdentifierAttributes::StaticStorageAttribute {
                     init: initial_value,
                     is_globally_visible: !matches!(
@@ -206,7 +208,7 @@ fn type_check_file_scope_variable_declaration(
 
 fn type_check_function_declaration(
     function_declaration: &parser::FunctionDeclaration,
-    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<()> {
     let parser::FunctionDeclaration {
         identifier,
@@ -254,7 +256,7 @@ fn type_check_function_declaration(
 
                 is_this_declaration_global = is_old_function_declaration_global;
 
-                entry.insert(symbol_table::SymbolState {
+                entry.insert(symbol_table::Symbol {
                     symbol_type: this_declaration_symbol_type,
                     identifier_attributes: symbol_table::IdentifierAttributes::FuncAttribute {
                         is_defined: is_old_function_declaration_defined || body.is_some(),
@@ -264,7 +266,7 @@ fn type_check_function_declaration(
             }
         }
         Entry::Vacant(e) => {
-            e.insert(symbol_table::SymbolState {
+            e.insert(symbol_table::Symbol {
                 symbol_type: this_declaration_symbol_type,
                 identifier_attributes: symbol_table::IdentifierAttributes::FuncAttribute {
                     is_defined: body.is_some(),
@@ -278,8 +280,8 @@ fn type_check_function_declaration(
         for p in parameters {
             symbol_table.insert(
                 p.clone(),
-                symbol_table::SymbolState {
-                    symbol_type: symbol_table::Symbol::Int,
+                symbol_table::Symbol {
+                    symbol_type: symbol_table::Type::Int,
                     identifier_attributes: symbol_table::IdentifierAttributes::LocalAttribute,
                 },
             );
@@ -293,7 +295,7 @@ fn type_check_function_declaration(
 
 fn type_check_block(
     block: &parser::Block,
-    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<()> {
     let parser::Block::Block(block) = block;
     for block_item in block {
@@ -304,7 +306,7 @@ fn type_check_block(
 
 fn type_check_block_item(
     block_item: &parser::BlockItem,
-    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<()> {
     match block_item {
         parser::BlockItem::Statement(statement) => {
@@ -320,7 +322,7 @@ fn type_check_block_item(
 
 fn type_check_statement(
     statement: &parser::Statement,
-    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<()> {
     match statement {
         parser::Statement::Return(expression) | parser::Statement::Expression(expression) => {
@@ -395,7 +397,7 @@ fn type_check_statement(
 
 fn type_check_for_init(
     for_init: &parser::ForInit,
-    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<()> {
     match for_init {
         parser::ForInit::InitialDeclaration(variable_declaration) => {
@@ -416,7 +418,7 @@ fn type_check_for_init(
 
 fn type_check_declaration(
     declaration: &parser::Declaration,
-    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<()> {
     match declaration {
         parser::Declaration::VariableDeclaration(variable_declaration) => {
@@ -434,13 +436,13 @@ fn type_check_declaration(
 
 fn type_check_expression(
     expression: &parser::Expression,
-    symbol_table: &mut HashMap<String, symbol_table::SymbolState>,
+    symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<()> {
     match expression {
         parser::Expression::Var { identifier } => {
             if matches!(
                 symbol_table[identifier].symbol_type,
-                symbol_table::Symbol::FuncType { .. }
+                symbol_table::Type::FuncType { .. }
             ) {
                 bail!("Function name used as a variable!");
             }
@@ -452,7 +454,7 @@ fn type_check_expression(
         } => {
             if matches!(
                 symbol_table[identifier].symbol_type,
-                symbol_table::Symbol::Int | symbol_table::Symbol::Long
+                symbol_table::Type::Int | symbol_table::Type::Long
             ) {
                 bail!("Variable name used as a function!");
             }
@@ -460,7 +462,7 @@ fn type_check_expression(
             //  argument count, we need to check the types and the return types.
             if !matches!(
                 &symbol_table[identifier].symbol_type,
-                symbol_table::Symbol::FuncType {
+                symbol_table::Type::FuncType {
                     parameter_types,
                     ..
                 } if parameter_types.len() == arguments.len()
@@ -493,10 +495,8 @@ fn type_check_expression(
     }
 }
 
-pub fn analyse(
-    declarations: &Vec<parser::Declaration>,
-) -> HashMap<String, symbol_table::SymbolState> {
-    let mut symbol_table: HashMap<String, symbol_table::SymbolState> = HashMap::new();
+pub fn analyse(declarations: &Vec<parser::Declaration>) -> HashMap<String, symbol_table::Symbol> {
+    let mut symbol_table: HashMap<String, symbol_table::Symbol> = HashMap::new();
     //
     for declaration in declarations {
         match declaration {

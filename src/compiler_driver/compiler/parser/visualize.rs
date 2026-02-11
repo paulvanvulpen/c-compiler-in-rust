@@ -67,13 +67,19 @@ impl visualize::Visualizer for parser::FunctionDeclaration {
             None => String::new(),
         };
         let (return_type, parameters_with_type) = match function_type {
-            parser::symbol_table::Symbol::FuncType{ parameter_types, return_type } => {
-                (return_type, parameter_types.iter().zip(parameters.iter())
+            parser::symbol_table::Type::FuncType {
+                parameter_types,
+                return_type,
+            } => (
+                return_type,
+                parameter_types
+                    .iter()
+                    .zip(parameters.iter())
                     .map(|(t, s)| format!("{:?} {}", t, s))
                     .collect::<Vec<String>>()
-                    .join(", "))
-            },
-            _ => panic!("Not a function type!")
+                    .join(", "),
+            ),
+            _ => panic!("Not a function type!"),
         };
         match body {
             Some(block) => {
@@ -136,9 +142,11 @@ impl visualize::Visualizer for parser::VariableDeclaration {
             None => String::new(),
         };
         let variable_type = match variable_type {
-            symbol_table::Symbol::Int => "int".to_string(),
-            symbol_table::Symbol::Long => "long".to_string(),
-            symbol_table::Symbol::FuncType {..} => panic!("Function type not expected as variable declaration")
+            symbol_table::Type::Int => "int".to_string(),
+            symbol_table::Type::Long => "long".to_string(),
+            symbol_table::Type::FuncType { .. } => {
+                panic!("Function type not expected as variable declaration")
+            }
         };
 
         match init {
@@ -331,16 +339,17 @@ impl visualize::Visualizer for parser::Expression {
         let indent = "    ";
         let prefix = indent.repeat(depth as usize);
         match self {
-            parser::Expression::Constant(constant) => {
-                match constant {
-                    symbol_table::Constant::ConstInt(value) => format!("ConstInt({value})"),
-                    symbol_table::Constant::ConstLong(value) => format!("ConstLong({value})")
-                }
-            }
+            parser::Expression::Constant(constant) => match constant {
+                symbol_table::Constant::ConstInt(value) => format!("ConstInt({value})"),
+                symbol_table::Constant::ConstLong(value) => format!("ConstLong({value})"),
+            },
             parser::Expression::Var { identifier } => {
                 format!("Var({identifier})")
             }
-            parser::Expression::Cast { target_type, expression} => format!("{:?}Cast{}", target_type, expression.visualize(depth + 1)),
+            parser::Expression::Cast {
+                target_type,
+                expression,
+            } => format!("{:?}Cast{}", target_type, expression.visualize(depth + 1)),
             parser::Expression::Unary(unary_operator, boxed_expression) => match unary_operator {
                 parser::UnaryOperator::PostfixDecrement
                 | parser::UnaryOperator::PostfixIncrement => format!(

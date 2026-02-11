@@ -5,13 +5,13 @@ mod type_checking;
 
 use super::generator;
 use super::parser;
-use super::symbol_table::SymbolState;
+use super::symbol_table::Symbol;
 use anyhow::Context;
 use std::collections::HashMap;
 
 pub fn run_semantic_analysis(
     parser_ast: parser::AbstractSyntaxTree,
-) -> anyhow::Result<(parser::AbstractSyntaxTree, HashMap<String, SymbolState>)> {
+) -> anyhow::Result<(parser::AbstractSyntaxTree, HashMap<String, Symbol>)> {
     let parser::AbstractSyntaxTree::Program(parser::Program::Program(mut declarations)) =
         parser_ast;
 

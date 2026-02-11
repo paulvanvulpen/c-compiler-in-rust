@@ -1,11 +1,11 @@
 use super::assembly_generator;
-use super::symbol_table::{IdentifierAttributes, SymbolState};
+use super::symbol_table::{IdentifierAttributes, Symbol};
 use std::collections::HashMap;
 use std::io::Write;
 
 fn write_assembler_ast(
     assembler_ast: assembly_generator::AssemblyAbstractSyntaxTree,
-    symbol_table: &HashMap<String, SymbolState>,
+    symbol_table: &HashMap<String, Symbol>,
 ) -> String {
     match assembler_ast {
         assembly_generator::AssemblyAbstractSyntaxTree::Program(program) => {
@@ -15,7 +15,7 @@ fn write_assembler_ast(
 }
 fn write_program(
     program: assembly_generator::Program,
-    symbol_table: &HashMap<String, SymbolState>,
+    symbol_table: &HashMap<String, Symbol>,
 ) -> String {
     match program {
         assembly_generator::Program::Program(function_definitions) => format!(
@@ -32,7 +32,7 @@ fn write_program(
 
 fn write_function(
     toplevel_definition: assembly_generator::TopLevel,
-    symbol_table: &HashMap<String, SymbolState>,
+    symbol_table: &HashMap<String, Symbol>,
 ) -> String {
     let prefix = "    ";
     match toplevel_definition {
@@ -111,7 +111,7 @@ fn write_binary_operator(binary_operator: assembly_generator::BinaryOperator) ->
 
 fn write_instruction(
     instruction: assembly_generator::Instruction,
-    symbol_table: &HashMap<String, SymbolState>,
+    symbol_table: &HashMap<String, Symbol>,
 ) -> String {
     let prefix = "    ";
     match instruction {
@@ -165,7 +165,7 @@ fn write_instruction(
             format!("pushq\t{}\n", write_operand(operand, 8))
         }
         assembly_generator::Instruction::Call(identifier) => {
-            let SymbolState {
+            let Symbol {
                 identifier_attributes,
                 ..
             } = &symbol_table[&identifier];
@@ -292,7 +292,7 @@ fn write_condition_code(condition_code: assembly_generator::ConditionCode) -> St
 
 pub fn run_code_emission(
     assembly_ast: assembly_generator::AssemblyAbstractSyntaxTree,
-    symbol_table: &HashMap<String, SymbolState>,
+    symbol_table: &HashMap<String, Symbol>,
     input_file_path: &std::path::Path,
 ) -> anyhow::Result<()> {
     let mut assembly_file = std::fs::File::create(input_file_path.with_extension("s"))?;
