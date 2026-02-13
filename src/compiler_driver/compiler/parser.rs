@@ -66,9 +66,23 @@ pub struct FunctionDeclaration {
 
 pub struct VariableDeclaration {
     pub identifier: String,
-    pub init: Option<Expression>,
+    pub init: Option<TypedExpression>,
     pub variable_type: symbol_table::Type,
     pub storage_class: Option<StorageClass>,
+}
+
+pub struct TypedExpression {
+    expression_type: Type,
+    expression: Expression,
+}
+
+impl From<Expression> for TypedExpression {
+    fn from(expression: Expression) -> Self {
+        Self {
+            expression_type: Type::default(),
+            expression,
+        }
+    }
 }
 
 pub enum StorageClass {
@@ -104,10 +118,10 @@ pub struct LabelAndMatchValue {
 
 #[derive(Default)]
 pub enum Statement {
-    Return(Expression),
-    Expression(Expression),
+    Return(TypedExpression),
+    Expression(TypedExpression),
     If {
-        condition: Expression,
+        condition: TypedExpression,
         then_statement: Box<Statement>,
         optional_else_statement: Option<Box<Statement>>,
     },
@@ -121,24 +135,24 @@ pub enum Statement {
         label: Option<String>,
     },
     While {
-        condition: Expression,
+        condition: TypedExpression,
         body: Box<Statement>,
         label: Option<String>,
     },
     DoWhile {
         body: Box<Statement>,
-        condition: Expression,
+        condition: TypedExpression,
         label: Option<String>,
     },
     For {
         init: ForInit,
-        condition: Option<Expression>,
-        post: Option<Expression>,
+        condition: Option<TypedExpression>,
+        post: Option<TypedExpression>,
         body: Box<Statement>,
         label: Option<String>,
     },
     Switch {
-        condition: Expression,
+        condition: TypedExpression,
         cases: Vec<LabelAndMatchValue>,
         body: Box<Statement>,
         label: Option<String>,
@@ -160,7 +174,7 @@ pub enum Statement {
 
 pub enum ForInit {
     InitialDeclaration(VariableDeclaration),
-    InitialOptionalExpression(Option<Expression>),
+    InitialOptionalExpression(Option<TypedExpression>),
 }
 
 pub enum Expression {
@@ -169,20 +183,24 @@ pub enum Expression {
         identifier: String,
     },
     Cast {
-        target_type: symbol_table::Type,
-        expression: Box<Expression>,
+        target_type: Type,
+        expression: Box<TypedExpression>,
     },
-    Unary(UnaryOperator, Box<Expression>),
+    Unary(UnaryOperator, Box<TypedExpression>),
     BinaryOperation {
         binary_operator: BinaryOperator,
-        left_operand: Box<Expression>,
-        right_operand: Box<Expression>,
+        left_operand: Box<TypedExpression>,
+        right_operand: Box<TypedExpression>,
     },
-    Assignment(Box<Expression>, Box<Expression>),
-    Conditional(Box<Expression>, Box<Expression>, Box<Expression>),
+    Assignment(Box<TypedExpression>, Box<TypedExpression>),
+    Conditional(
+        Box<TypedExpression>,
+        Box<TypedExpression>,
+        Box<TypedExpression>,
+    ),
     FunctionCall {
         identifier: String,
-        arguments: Vec<Expression>,
+        arguments: Vec<TypedExpression>,
     },
 }
 
@@ -777,7 +795,7 @@ fn parse_statement(lexer_tokens: &mut [Token]) -> Result<(Statement, &mut [Token
 //              | "(" { <type-specifier> }+ ")" <primary>
 //              | "(" <exp> ")" [ <postfix_op> ]
 //              | <identifier> "(" [ <argument-list> ] ")"
-fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token])> {
+fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(TypedExpression, &mut [Token])> {
     match &mut lexer_tokens[0] {
         Token::IntegerConstant(value) => {
             if *value > (2usize.pow(63) - 1) {
@@ -789,12 +807,12 @@ fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token]
 
             if *value > (2usize.pow(31) - 1) {
                 Ok((
-                    Expression::Constant(symbol_table::Constant::ConstLong(*value as u64)),
+                    Expression::Constant(symbol_table::Constant::ConstLong(*value as u64)).into(),
                     &mut lexer_tokens[1..],
                 ))
             } else {
                 Ok((
-                    Expression::Constant(symbol_table::Constant::ConstInt(*value as u32)),
+                    Expression::Constant(symbol_table::Constant::ConstInt(*value as u32)).into(),
                     &mut lexer_tokens[1..],
                 ))
             }
@@ -807,7 +825,7 @@ fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token]
                 )
             }
             Ok((
-                Expression::Constant(symbol_table::Constant::ConstLong(*value as u64)),
+                Expression::Constant(symbol_table::Constant::ConstLong(*value as u64)).into(),
                 &mut lexer_tokens[1..],
             ))
         }
@@ -829,13 +847,14 @@ fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token]
                     Expression::FunctionCall {
                         identifier,
                         arguments,
-                    },
+                    }
+                    .into(),
                     lexer_tokens,
                 ))
             } else {
-                let mut left = Expression::Var { identifier };
+                let mut left = Expression::Var { identifier }.into();
                 while let Some(unary_operator) = parse_postfix_operator(&lexer_tokens) {
-                    left = Expression::Unary(unary_operator, Box::new(left));
+                    left = Expression::Unary(unary_operator, Box::new(left)).into();
                     lexer_tokens = &mut lexer_tokens[1..];
                 }
                 Ok((left, lexer_tokens))
@@ -856,7 +875,8 @@ fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token]
                         Expression::Cast {
                             target_type: symbol,
                             expression: Box::new(primary),
-                        },
+                        }
+                        .into(),
                         lexer_tokens,
                     ))
                 }
@@ -868,7 +888,7 @@ fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token]
                     let mut left = expression;
                     let mut lexer_tokens = lexer_tokens;
                     while let Some(unary_operator) = parse_postfix_operator(&lexer_tokens) {
-                        left = Expression::Unary(unary_operator, Box::new(left));
+                        left = Expression::Unary(unary_operator, Box::new(left)).into();
                         lexer_tokens = &mut lexer_tokens[1..];
                     }
                     Ok((left, lexer_tokens))
@@ -883,14 +903,14 @@ fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token]
 }
 
 // <argument-list> ::= <exp> { "," <exp> }
-fn parse_argument_list(lexer_tokens: &mut [Token]) -> Result<(Vec<Expression>, &mut [Token])> {
-    let mut arguments: Vec<Expression> = vec![];
+fn parse_argument_list(lexer_tokens: &mut [Token]) -> Result<(Vec<TypedExpression>, &mut [Token])> {
+    let mut arguments: Vec<TypedExpression> = vec![];
     let mut lexer_tokens = lexer_tokens;
     loop {
-        let expression;
-        (expression, lexer_tokens) =
+        let typed_expression;
+        (typed_expression, lexer_tokens) =
             parse_expression(lexer_tokens, 0).context("parsing an argument-list")?;
-        arguments.push(expression);
+        arguments.push(typed_expression);
         if !matches!(lexer_tokens[0], Token::Comma) {
             break;
         }
@@ -900,7 +920,7 @@ fn parse_argument_list(lexer_tokens: &mut [Token]) -> Result<(Vec<Expression>, &
 }
 
 // <unary_exp> ::= <prefix_op> <unary_exp> | <primary>
-fn parse_unary_expression(lexer_tokens: &mut [Token]) -> Result<(Expression, &mut [Token])> {
+fn parse_unary_expression(lexer_tokens: &mut [Token]) -> Result<(TypedExpression, &mut [Token])> {
     match &lexer_tokens[0] {
         Token::Hyphen
         | Token::Tilde
@@ -911,7 +931,10 @@ fn parse_unary_expression(lexer_tokens: &mut [Token]) -> Result<(Expression, &mu
                 parse_prefix_operator(lexer_tokens).context("parsing a prefix unary expression")?;
             let (primary, lexer_tokens) = parse_unary_expression(lexer_tokens)
                 .context("parsing a prefix unary expression")?;
-            Ok((Expression::Unary(unary_op, Box::new(primary)), lexer_tokens))
+            Ok((
+                Expression::Unary(unary_op, Box::new(primary)).into(),
+                lexer_tokens,
+            ))
         }
         _ => parse_primary(lexer_tokens),
     }
@@ -921,7 +944,7 @@ fn parse_unary_expression(lexer_tokens: &mut [Token]) -> Result<(Expression, &mu
 fn parse_expression(
     lexer_tokens: &mut [Token],
     min_precedence: u8,
-) -> Result<(Expression, &mut [Token])> {
+) -> Result<(TypedExpression, &mut [Token])> {
     let (mut left, mut lexer_tokens) =
         parse_unary_expression(lexer_tokens).context("parsing an expression")?;
     let mut right;
@@ -933,11 +956,11 @@ fn parse_expression(
                 (right, lexer_tokens) =
                     parse_expression(lexer_tokens, BinaryOperator::Assign.precedence())
                         .context("parsing an expression")?;
-                left = Expression::Assignment(Box::new(left), Box::new(right));
+                left = Expression::Assignment(Box::new(left.into()), Box::new(right.into())).into();
             }
             Token::QuestionMark => {
                 lexer_tokens = &mut lexer_tokens[1..];
-                let middle: Expression;
+                let middle: TypedExpression;
                 (middle, lexer_tokens) = parse_expression(lexer_tokens, 0)
                     .context("parsing a conditional expression")?;
                 lexer_tokens = expect(Token::Colon, lexer_tokens)
@@ -945,7 +968,8 @@ fn parse_expression(
                 (right, lexer_tokens) =
                     parse_expression(lexer_tokens, BinaryOperator::Conditional.precedence())
                         .context("parsing a conditional expression")?;
-                left = Expression::Conditional(Box::new(left), Box::new(middle), Box::new(right));
+                left = Expression::Conditional(Box::new(left), Box::new(middle), Box::new(right))
+                    .into();
             }
             _ => {
                 (binary_operator, lexer_tokens) = parse_binary_operator(lexer_tokens)
@@ -972,7 +996,8 @@ fn parse_expression(
                     binary_operator,
                     left_operand: Box::new(left),
                     right_operand: Box::new(right),
-                };
+                }
+                .into();
             }
         }
     }

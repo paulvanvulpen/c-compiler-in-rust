@@ -127,6 +127,15 @@ impl visualize::Visualizer for parser::StorageClass {
     }
 }
 
+impl visualize::Visualizer for parser::TypedExpression {
+    fn visualize(&self, depth: u8) -> String {
+        format!(
+            "{{{:?}}}:{}",
+            self.expression_type,
+            self.expression.visualize(depth)
+        )
+    }
+}
 impl visualize::Visualizer for parser::VariableDeclaration {
     fn visualize(&self, depth: u8) -> String {
         let indent = "    ";
@@ -142,6 +151,7 @@ impl visualize::Visualizer for parser::VariableDeclaration {
             None => String::new(),
         };
         let variable_type = match variable_type {
+            symbol_table::Type::Undefined => "undef".to_string(),
             symbol_table::Type::Int => "int".to_string(),
             symbol_table::Type::Long => "long".to_string(),
             symbol_table::Type::FuncType { .. } => {
@@ -150,16 +160,16 @@ impl visualize::Visualizer for parser::VariableDeclaration {
         };
 
         match init {
-            Some(expression) => match expression {
+            Some(typed_expression) => match typed_expression.expression {
                 parser::Expression::Constant(..) | parser::Expression::Var { .. } => {
                     format!(
                         "{prefix}{storage_class} {variable_type} {identifier} = {};",
-                        expression.visualize(0)
+                        typed_expression.visualize(0)
                     )
                 }
                 _ => format!(
                     "{prefix}{storage_class} {variable_type} {identifier} =\n{};",
-                    expression.visualize(depth + 1)
+                    typed_expression.visualize(depth + 1)
                 ),
             },
             None => format!("{prefix}{storage_class} {variable_type} {identifier};"),
