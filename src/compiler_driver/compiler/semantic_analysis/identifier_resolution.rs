@@ -53,9 +53,9 @@ fn resolve_local_variable_declaration(
         },
     );
 
-    let mut updated_initializer: Option<parser::Expression> = None;
+    let mut updated_initializer: Option<parser::TypedExpression> = None;
     if let Some(init) = init {
-        updated_initializer = Some(resolve_expression(init, identifier_map)?);
+        updated_initializer = Some(resolve_expression(init, identifier_map)?)
     }
 
     Ok(parser::VariableDeclaration {
@@ -205,10 +205,10 @@ fn resolve_for_init(
                 resolve_local_variable_declaration(declaration, identifier_map)?,
             ))
         }
-        parser::ForInit::InitialOptionalExpression(optional_expression) => {
-            match optional_expression {
-                Some(expression) => Ok(parser::ForInit::InitialOptionalExpression(Some(
-                    resolve_expression(expression, identifier_map)?,
+        parser::ForInit::InitialOptionalExpression(optional_typed_expression) => {
+            match optional_typed_expression {
+                Some(typed_expression) => Ok(parser::ForInit::InitialOptionalExpression(Some(
+                    resolve_expression(typed_expression, identifier_map)?,
                 ))),
                 None => Ok(parser::ForInit::InitialOptionalExpression(None)),
             }
@@ -221,10 +221,10 @@ fn resolve_statement(
     identifier_map: &mut HashMap<String, NameAndScope>,
 ) -> anyhow::Result<parser::Statement> {
     match statement {
-        parser::Statement::Return(expression) => Ok(parser::Statement::Return(resolve_expression(
-            expression,
-            identifier_map,
-        )?)),
+        parser::Statement::Return(typed_expression) => Ok(parser::Statement::Return(
+            resolve_expression(typed_expression, identifier_map)?,
+        )
+        .into()),
         parser::Statement::If {
             condition,
             then_statement,
@@ -372,29 +372,31 @@ fn resolve_statement(
 }
 
 fn resolve_expression(
-    expression: parser::Expression,
+    typed_expression: parser::TypedExpression,
     identifier_map: &mut HashMap<String, NameAndScope>,
-) -> anyhow::Result<parser::Expression> {
-    match expression {
+) -> anyhow::Result<parser::TypedExpression> {
+    match typed_expression.expression {
         parser::Expression::Assignment(left, right) => {
-            if !matches!(*left, parser::Expression::Var { .. }) {
+            if !matches!(left.expression, parser::Expression::Var { .. }) {
                 return Err(anyhow!("invalid lvalue {}", (*left).visualize(0)));
             }
             Ok(parser::Expression::Assignment(
                 Box::new(resolve_expression(*left, identifier_map)?),
                 Box::new(resolve_expression(*right, identifier_map)?),
-            ))
+            )
+            .into())
         }
         parser::Expression::Var { identifier } => {
             if identifier_map.contains_key(&identifier) {
                 Ok(parser::Expression::Var {
                     identifier: identifier_map[&identifier].unique_name.clone(),
-                })
+                }
+                .into())
             } else {
                 Err(anyhow!("undeclared variable identifier {:?}", identifier))
             }
         }
-        parser::Expression::Constant(..) => Ok(expression),
+        parser::Expression::Constant(..) => Ok(typed_expression),
         parser::Expression::Cast {
             target_type,
             expression,
@@ -402,7 +404,8 @@ fn resolve_expression(
         } => Ok(parser::Expression::Cast {
             target_type,
             expression: Box::new(resolve_expression(*expression, identifier_map)?),
-        }),
+        }
+        .into()),
         parser::Expression::BinaryOperation {
             binary_operator,
             left_operand,
@@ -419,7 +422,7 @@ fn resolve_expression(
                 | parser::BinaryOperator::BitwiseXOrAssign
                 | parser::BinaryOperator::LeftShiftAssign
                 | parser::BinaryOperator::RightShiftAssign => {
-                    if !matches!(*left_operand, parser::Expression::Var { .. }) {
+                    if !matches!(left_operand.expression, parser::Expression::Var { .. }) {
                         return Err(anyhow!("invalid lvalue {:?}", (*left_operand).visualize(0)));
                     }
                 }
@@ -452,33 +455,37 @@ fn resolve_expression(
                 binary_operator,
                 left_operand: Box::new(resolve_expression(*left_operand, identifier_map)?),
                 right_operand: Box::new(resolve_expression(*right_operand, identifier_map)?),
-            })
+            }
+            .into())
         }
-        parser::Expression::Unary(unary_operator, expression) => match unary_operator {
+        parser::Expression::Unary(unary_operator, operand) => match unary_operator {
             parser::UnaryOperator::Negate
             | parser::UnaryOperator::Not
             | parser::UnaryOperator::Complement => Ok(parser::Expression::Unary(
                 unary_operator,
-                Box::new(resolve_expression(*expression, identifier_map)?),
-            )),
+                Box::new(resolve_expression(*operand, identifier_map)?),
+            )
+            .into()),
             parser::UnaryOperator::PrefixDecrement
             | parser::UnaryOperator::PostfixDecrement
             | parser::UnaryOperator::PrefixIncrement
             | parser::UnaryOperator::PostfixIncrement => {
-                if !matches!(*expression, parser::Expression::Var { .. }) {
-                    return Err(anyhow!("invalid lvalue {:?}", (*expression).visualize(0)));
+                if !matches!(operand.expression, parser::Expression::Var { .. }) {
+                    return Err(anyhow!("invalid lvalue {:?}", (*operand).visualize(0)));
                 }
                 Ok(parser::Expression::Unary(
                     unary_operator,
-                    Box::new(resolve_expression(*expression, identifier_map)?),
-                ))
+                    Box::new(resolve_expression(*operand, identifier_map)?),
+                )
+                .into())
             }
         },
         parser::Expression::Conditional(exp1, exp2, exp3) => Ok(parser::Expression::Conditional(
             Box::new(resolve_expression(*exp1, identifier_map)?),
             Box::new(resolve_expression(*exp2, identifier_map)?),
             Box::new(resolve_expression(*exp3, identifier_map)?),
-        )),
+        )
+        .into()),
         parser::Expression::FunctionCall {
             identifier,
             arguments,
@@ -494,7 +501,8 @@ fn resolve_expression(
                                 .unwrap()
                         })
                         .collect(),
-                })
+                }
+                .into())
             } else {
                 Err(anyhow!("undeclared function identifier {:?}", identifier))
             }

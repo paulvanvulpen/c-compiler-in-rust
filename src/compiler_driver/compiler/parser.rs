@@ -72,8 +72,8 @@ pub struct VariableDeclaration {
 }
 
 pub struct TypedExpression {
-    expression_type: Type,
-    expression: Expression,
+    pub expression_type: Type,
+    pub expression: Expression,
 }
 
 impl From<Expression> for TypedExpression {
