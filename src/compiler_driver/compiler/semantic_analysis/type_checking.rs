@@ -307,7 +307,7 @@ fn type_check_function_declaration(
         }
     }
 
-    if body.is_some() {
+    let body: Option<parser::Block> = if let Some(body) = body {
         parameters
             .iter()
             .zip(parameter_types)
@@ -320,9 +320,10 @@ fn type_check_function_declaration(
                     },
                 );
             });
-        type_check_block(body.as_ref().unwrap(), symbol_table)
-            .context("type checking function declaration")?;
-    }
+        Some(type_check_block(body, symbol_table).context("type checking function declaration")?)
+    } else {
+        None
+    };
 
     Ok(parser::FunctionDeclaration {
         identifier,
@@ -334,9 +335,9 @@ fn type_check_function_declaration(
 }
 
 fn type_check_block(
-    block: &parser::Block,
+    block: parser::Block,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<parser::Block> {
     let parser::Block::Block(block) = block;
     for block_item in block {
         type_check_block_item(block_item, symbol_table).context("type checking a block")?;
