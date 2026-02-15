@@ -23,8 +23,8 @@ pub enum IdentifierAttributes {
 }
 #[derive(Clone)]
 pub enum Constant {
-    ConstInt(u32),
-    ConstLong(u64),
+    ConstInt(i32),
+    ConstLong(i64),
 }
 
 impl Default for Constant {
@@ -34,9 +34,15 @@ impl Default for Constant {
 }
 
 #[derive(Clone)]
+pub enum StaticInit {
+    IntInit(i32),
+    LongInit(i64),
+}
+
+#[derive(Clone)]
 pub enum InitialValue {
     Tentative,
-    Initial(Constant),
+    Initial(StaticInit),
     NoInitializer,
 }
 

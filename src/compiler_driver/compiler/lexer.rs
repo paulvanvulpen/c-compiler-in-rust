@@ -8,8 +8,8 @@ use lazy_static::lazy_static;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Identifier(String),
-    IntegerConstant(usize),
-    LongIntegerConstant(usize),
+    IntegerConstant(isize),
+    LongIntegerConstant(isize),
     Int,
     Long,
     Void,
@@ -128,7 +128,7 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
         return (
             // Regex doesn't support look-ahead, parsing without the [lL] instead
             Some(Token::LongIntegerConstant(
-                token_str[0..token.end() - 1].parse::<usize>().unwrap(),
+                token_str[0..token.end() - 1].parse::<isize>().unwrap(),
             )),
             remainder,
         );
@@ -137,7 +137,7 @@ fn lex(partial_line: &str) -> (Option<Token>, &str) {
     if let Some(token) = CONSTANT_REGEX.find(&partial_line) {
         let (token_str, remainder) = partial_line.split_at(token.end());
         return (
-            Some(Token::IntegerConstant(token_str.parse::<usize>().unwrap())),
+            Some(Token::IntegerConstant(token_str.parse::<isize>().unwrap())),
             remainder,
         );
     }

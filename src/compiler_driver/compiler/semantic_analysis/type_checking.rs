@@ -1,5 +1,6 @@
 use super::parser;
 use crate::compiler_driver::compiler::symbol_table;
+use crate::compiler_driver::compiler::symbol_table::{Constant, Type};
 use anyhow::{Context, bail};
 use std::collections::hash_map::{Entry, HashMap};
 
@@ -83,9 +84,9 @@ fn type_check_variable_declaration(
 }
 
 fn type_check_file_scope_variable_declaration(
-    variable_declaration: &parser::VariableDeclaration,
+    variable_declaration: parser::VariableDeclaration,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<(parser::VariableDeclaration)> {
     let parser::VariableDeclaration {
         identifier,
         init,
@@ -94,9 +95,29 @@ fn type_check_file_scope_variable_declaration(
     } = variable_declaration;
 
     let mut initial_value = match init {
-        Some(expression) => {
-            if let parser::Expression::Constant(constant) = expression {
-                symbol_table::InitialValue::Initial(constant.clone())
+        Some(typed_expression) => {
+            if let parser::Expression::Constant(constant) = typed_expression.expression {
+                let static_init = match (constant, variable_type) {
+                    (Constant::ConstInt(const_int), Type::Int) => {
+                        symbol_table::StaticInit::IntInit(const_int)
+                    }
+                    (Constant::ConstInt(const_int), Type::Long) => {
+                        symbol_table::StaticInit::LongInit(const_int as i64)
+                    }
+                    (Constant::ConstLong(const_long), Type::Int) => {
+                        symbol_table::StaticInit::IntInit(const_long as i32)
+                    }
+                    (Constant::ConstLong(const_long), Type::Long) => {
+                        symbol_table::StaticInit::LongInit(const_long)
+                    }
+                    (_, Type::Undefined) => unreachable!(
+                        "Undefined variable found when type checking a file scope variable declaration"
+                    ),
+                    (_, Type::FuncType { .. }) => unreachable!(
+                        "Function type found when type checking a file scope variable declaration"
+                    ),
+                };
+                symbol_table::InitialValue::Initial(static_init)
             } else {
                 bail!("Non-constant initializer")
             }
@@ -207,9 +228,9 @@ fn type_check_file_scope_variable_declaration(
 }
 
 fn type_check_function_declaration(
-    function_declaration: &parser::FunctionDeclaration,
+    function_declaration: parser::FunctionDeclaration,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<(parser::FunctionDeclaration)> {
     let parser::FunctionDeclaration {
         identifier,
         parameters,
@@ -495,24 +516,36 @@ fn type_check_expression(
     }
 }
 
-pub fn analyse(declarations: &Vec<parser::Declaration>) -> HashMap<String, symbol_table::Symbol> {
+pub fn analyse(
+    declarations: Vec<parser::Declaration>,
+) -> (
+    Vec<parser::Declaration>,
+    HashMap<String, symbol_table::Symbol>,
+) {
     let mut symbol_table: HashMap<String, symbol_table::Symbol> = HashMap::new();
-    //
-    for declaration in declarations {
-        match declaration {
-            parser::Declaration::VariableDeclaration(variable_declaration) => {
-                type_check_file_scope_variable_declaration(variable_declaration, &mut symbol_table)
-                    .context("Type checking a file scope variable declaration")
-                    .unwrap()
-            }
-
-            parser::Declaration::FunctionDeclaration(function_declaration) => {
-                type_check_function_declaration(function_declaration, &mut symbol_table)
-                    .context("type checking a function")
-                    .unwrap()
-            }
-        }
-    }
-
-    symbol_table
+    (
+        declarations
+            .into_iter()
+            .map(|declaration| match declaration {
+                parser::Declaration::VariableDeclaration(variable_declaration) => {
+                    parser::Declaration::VariableDeclaration(
+                        type_check_file_scope_variable_declaration(
+                            variable_declaration,
+                            &mut symbol_table,
+                        )
+                        .context("Type checking a file scope variable declaration")
+                        .unwrap(),
+                    )
+                }
+                parser::Declaration::FunctionDeclaration(function_declaration) => {
+                    parser::Declaration::FunctionDeclaration(
+                        type_check_function_declaration(function_declaration, &mut symbol_table)
+                            .context("type checking a function")
+                            .unwrap(),
+                    )
+                }
+            })
+            .collect(),
+        symbol_table,
+    )
 }
