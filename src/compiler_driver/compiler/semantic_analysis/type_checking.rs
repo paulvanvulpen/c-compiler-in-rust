@@ -86,7 +86,7 @@ fn type_check_variable_declaration(
 fn type_check_file_scope_variable_declaration(
     variable_declaration: parser::VariableDeclaration,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
-) -> anyhow::Result<(parser::VariableDeclaration)> {
+) -> anyhow::Result<parser::VariableDeclaration> {
     let parser::VariableDeclaration {
         identifier,
         init,
@@ -94,21 +94,21 @@ fn type_check_file_scope_variable_declaration(
         storage_class,
     } = variable_declaration;
 
-    let mut initial_value = match init {
+    let mut initial_value = match &init {
         Some(typed_expression) => {
-            if let parser::Expression::Constant(constant) = typed_expression.expression {
-                let static_init = match (constant, variable_type) {
+            if let parser::Expression::Constant(constant) = &typed_expression.expression {
+                let static_init = match (constant, &variable_type) {
                     (Constant::ConstInt(const_int), Type::Int) => {
-                        symbol_table::StaticInit::IntInit(const_int)
+                        symbol_table::StaticInit::IntInit(*const_int)
                     }
                     (Constant::ConstInt(const_int), Type::Long) => {
-                        symbol_table::StaticInit::LongInit(const_int as i64)
+                        symbol_table::StaticInit::LongInit(*const_int as i64)
                     }
                     (Constant::ConstLong(const_long), Type::Int) => {
-                        symbol_table::StaticInit::IntInit(const_long as i32)
+                        symbol_table::StaticInit::IntInit(*const_long as i32)
                     }
                     (Constant::ConstLong(const_long), Type::Long) => {
-                        symbol_table::StaticInit::LongInit(const_long)
+                        symbol_table::StaticInit::LongInit(*const_long)
                     }
                     (_, Type::Undefined) => unreachable!(
                         "Undefined variable found when type checking a file scope variable declaration"
@@ -123,7 +123,7 @@ fn type_check_file_scope_variable_declaration(
             }
         }
         None => {
-            if matches!(storage_class, Some(parser::StorageClass::Extern)) {
+            if matches!(&storage_class, Some(parser::StorageClass::Extern)) {
                 symbol_table::InitialValue::NoInitializer
             } else {
                 symbol_table::InitialValue::Tentative
@@ -135,14 +135,11 @@ fn type_check_file_scope_variable_declaration(
         Entry::Occupied(entry) => {
             let old = entry.get();
 
-            let this_declaration_symbol_type = symbol_table::Type::Int;
-
-            if old.symbol_type != this_declaration_symbol_type {
+            if old.symbol_type != variable_type {
                 bail!(
-                    "Function redeclared as variable \
-                    {:?} and {:?} for {}",
+                    "Conflicting types {:?} and {:?} found for {}",
                     old.symbol_type,
-                    this_declaration_symbol_type,
+                    variable_type,
                     identifier
                 )
             }
@@ -158,7 +155,7 @@ fn type_check_file_scope_variable_declaration(
                 is_globally_visible: is_old_variable_globally_visible,
             } = &old.identifier_attributes
             {
-                let is_this_declaration_globally_visible = match storage_class {
+                let is_this_declaration_globally_visible = match &storage_class {
                     Some(storage_class) => match storage_class {
                         parser::StorageClass::Extern => *is_old_variable_globally_visible,
                         parser::StorageClass::Static => {
@@ -200,7 +197,7 @@ fn type_check_file_scope_variable_declaration(
                 symbol_table.insert(
                     identifier.clone(),
                     symbol_table::Symbol {
-                        symbol_type: symbol_table::Type::Int,
+                        symbol_type: variable_type.clone(),
                         identifier_attributes:
                             symbol_table::IdentifierAttributes::StaticStorageAttribute {
                                 init: initial_value,
@@ -212,11 +209,11 @@ fn type_check_file_scope_variable_declaration(
         }
         Entry::Vacant(e) => {
             e.insert(symbol_table::Symbol {
-                symbol_type: symbol_table::Type::Int,
+                symbol_type: variable_type.clone(),
                 identifier_attributes: symbol_table::IdentifierAttributes::StaticStorageAttribute {
                     init: initial_value,
                     is_globally_visible: !matches!(
-                        storage_class,
+                        &storage_class,
                         Some(parser::StorageClass::Static)
                     ),
                 },
@@ -224,13 +221,18 @@ fn type_check_file_scope_variable_declaration(
         }
     }
 
-    Ok(())
+    Ok(parser::VariableDeclaration {
+        identifier,
+        init,
+        variable_type,
+        storage_class,
+    })
 }
 
 fn type_check_function_declaration(
     function_declaration: parser::FunctionDeclaration,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
-) -> anyhow::Result<(parser::FunctionDeclaration)> {
+) -> anyhow::Result<parser::FunctionDeclaration> {
     let parser::FunctionDeclaration {
         identifier,
         parameters,
@@ -239,7 +241,15 @@ fn type_check_function_declaration(
         storage_class,
     } = function_declaration;
 
-    let this_declaration_symbol_type = function_type.clone();
+    let (parameter_types, return_type) = match &function_type {
+        Type::Undefined | Type::Int | Type::Long => unreachable!(
+            "non-function-type found when type checking a file scope function declaration"
+        ),
+        Type::FuncType {
+            parameter_types,
+            return_type,
+        } => (parameter_types, return_type),
+    };
 
     let mut is_this_declaration_global =
         !matches!(storage_class, Some(parser::StorageClass::Static));
@@ -248,11 +258,11 @@ fn type_check_function_declaration(
         Entry::Occupied(mut entry) => {
             let old = entry.get();
 
-            if old.symbol_type != this_declaration_symbol_type {
+            if old.symbol_type != function_type {
                 bail!(
                     "Incompatible function declaration {:?} and {:?} for {}",
                     old.symbol_type,
-                    this_declaration_symbol_type,
+                    function_type,
                     identifier
                 )
             }
@@ -278,7 +288,7 @@ fn type_check_function_declaration(
                 is_this_declaration_global = is_old_function_declaration_global;
 
                 entry.insert(symbol_table::Symbol {
-                    symbol_type: this_declaration_symbol_type,
+                    symbol_type: function_type.clone(),
                     identifier_attributes: symbol_table::IdentifierAttributes::FuncAttribute {
                         is_defined: is_old_function_declaration_defined || body.is_some(),
                         is_globally_visible: is_this_declaration_global,
@@ -288,7 +298,7 @@ fn type_check_function_declaration(
         }
         Entry::Vacant(e) => {
             e.insert(symbol_table::Symbol {
-                symbol_type: this_declaration_symbol_type,
+                symbol_type: function_type.clone(),
                 identifier_attributes: symbol_table::IdentifierAttributes::FuncAttribute {
                     is_defined: body.is_some(),
                     is_globally_visible: is_this_declaration_global,
@@ -298,20 +308,29 @@ fn type_check_function_declaration(
     }
 
     if body.is_some() {
-        for p in parameters {
-            symbol_table.insert(
-                p.clone(),
-                symbol_table::Symbol {
-                    symbol_type: symbol_table::Type::Int,
-                    identifier_attributes: symbol_table::IdentifierAttributes::LocalAttribute,
-                },
-            );
-        }
+        parameters
+            .iter()
+            .zip(parameter_types)
+            .for_each(|(parameter, parameter_type)| {
+                symbol_table.insert(
+                    parameter.clone(),
+                    symbol_table::Symbol {
+                        symbol_type: parameter_type.clone(),
+                        identifier_attributes: symbol_table::IdentifierAttributes::LocalAttribute,
+                    },
+                );
+            });
         type_check_block(body.as_ref().unwrap(), symbol_table)
             .context("type checking function declaration")?;
     }
 
-    Ok(())
+    Ok(parser::FunctionDeclaration {
+        identifier,
+        parameters,
+        body,
+        function_type,
+        storage_class,
+    })
 }
 
 fn type_check_block(
