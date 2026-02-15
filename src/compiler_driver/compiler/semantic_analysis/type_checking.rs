@@ -5,9 +5,9 @@ use anyhow::{Context, bail};
 use std::collections::hash_map::{Entry, HashMap};
 
 fn type_check_variable_declaration(
-    variable_declaration: &parser::VariableDeclaration,
+    variable_declaration: parser::VariableDeclaration,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<parser::VariableDeclaration> {
     let parser::VariableDeclaration {
         identifier,
         init,
@@ -21,15 +21,20 @@ fn type_check_variable_declaration(
                 if init.is_some() {
                     bail!("Initializer on local extern variable declaration")
                 }
-                if let Some(old) = symbol_table.get(identifier) {
-                    if old.symbol_type != symbol_table::Type::Int {
-                        bail!("Function redeclared as variable")
+                if let Some(old) = symbol_table.get(&identifier) {
+                    if old.symbol_type != variable_type {
+                        bail!(
+                            "Conflicting types {:?} and {:?} found for {}",
+                            old.symbol_type,
+                            variable_type,
+                            identifier
+                        )
                     }
                 } else {
                     symbol_table.insert(
                         identifier.clone(),
                         symbol_table::Symbol {
-                            symbol_type: symbol_table::Type::Int,
+                            symbol_type: variable_type,
                             identifier_attributes:
                                 symbol_table::IdentifierAttributes::StaticStorageAttribute {
                                     init: symbol_table::InitialValue::NoInitializer,
@@ -41,21 +46,26 @@ fn type_check_variable_declaration(
             }
             parser::StorageClass::Static => {
                 let initial_value = match init {
-                    Some(expression) => {
-                        if let parser::Expression::Constant(constant) = expression {
-                            symbol_table::InitialValue::Initial(constant.clone())
+                    Some(typed_expression) => {
+                        if let parser::Expression::Constant(constant) = &typed_expression.expression
+                        {
+                            symbol_table::InitialValue::Initial(get_static_init(
+                                &constant,
+                                &variable_type,
+                            ))
                         } else {
                             bail!("Non-constant initializer")
                         }
                     }
-                    None => {
-                        todo!("perhaps need variable type here rather than just default constant")
-                    } //symbol_table::InitialValue::Initial(),
+                    None => symbol_table::InitialValue::Initial(get_static_init(
+                        &Constant::ConstInt(0),
+                        &variable_type,
+                    )),
                 };
                 symbol_table.insert(
                     identifier.clone(),
                     symbol_table::Symbol {
-                        symbol_type: symbol_table::Type::Int,
+                        symbol_type: Type::Int,
                         identifier_attributes:
                             symbol_table::IdentifierAttributes::StaticStorageAttribute {
                                 init: initial_value,
@@ -69,18 +79,46 @@ fn type_check_variable_declaration(
             symbol_table.insert(
                 identifier.clone(),
                 symbol_table::Symbol {
-                    symbol_type: symbol_table::Type::Int,
+                    symbol_type: Type::Int,
                     identifier_attributes: symbol_table::IdentifierAttributes::LocalAttribute,
                 },
             );
             if let Some(init) = init {
+                todo!("This is where I left off. Do something similar here to line 328 \
+                let body: Option< etc.");
                 type_check_expression(init, symbol_table)
                     .context("type checking a variable declaration")?
             }
         }
     }
 
-    Ok(())
+    Ok(parser::VariableDeclaration {
+        identifier,
+        init,
+        variable_type,
+        storage_class,
+    })
+}
+
+fn get_static_init(constant: &Constant, variable_type: &Type) -> symbol_table::StaticInit {
+    match (constant, variable_type) {
+        (Constant::ConstInt(const_int), Type::Int) => symbol_table::StaticInit::IntInit(*const_int),
+        (Constant::ConstInt(const_int), Type::Long) => {
+            symbol_table::StaticInit::LongInit(*const_int as i64)
+        }
+        (Constant::ConstLong(const_long), Type::Int) => {
+            symbol_table::StaticInit::IntInit(*const_long as i32)
+        }
+        (Constant::ConstLong(const_long), Type::Long) => {
+            symbol_table::StaticInit::LongInit(*const_long)
+        }
+        (_, Type::Undefined) => unreachable!(
+            "Undefined variable found when type checking a file scope variable declaration"
+        ),
+        (_, Type::FuncType { .. }) => {
+            unreachable!("Function type found when type checking a file scope variable declaration")
+        }
+    }
 }
 
 fn type_check_file_scope_variable_declaration(
@@ -97,29 +135,10 @@ fn type_check_file_scope_variable_declaration(
     let mut initial_value = match &init {
         Some(typed_expression) => {
             if let parser::Expression::Constant(constant) = &typed_expression.expression {
-                let static_init = match (constant, &variable_type) {
-                    (Constant::ConstInt(const_int), Type::Int) => {
-                        symbol_table::StaticInit::IntInit(*const_int)
-                    }
-                    (Constant::ConstInt(const_int), Type::Long) => {
-                        symbol_table::StaticInit::LongInit(*const_int as i64)
-                    }
-                    (Constant::ConstLong(const_long), Type::Int) => {
-                        symbol_table::StaticInit::IntInit(*const_long as i32)
-                    }
-                    (Constant::ConstLong(const_long), Type::Long) => {
-                        symbol_table::StaticInit::LongInit(*const_long)
-                    }
-                    (_, Type::Undefined) => unreachable!(
-                        "Undefined variable found when type checking a file scope variable declaration"
-                    ),
-                    (_, Type::FuncType { .. }) => unreachable!(
-                        "Function type found when type checking a file scope variable declaration"
-                    ),
-                };
-                symbol_table::InitialValue::Initial(static_init)
+                symbol_table::InitialValue::Initial(get_static_init(constant, &variable_type))
             } else {
-                bail!("Non-constant initializer")
+                b
+                ail!("Non-constant initializer")
             }
         }
         None => {
@@ -339,32 +358,37 @@ fn type_check_block(
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<parser::Block> {
     let parser::Block::Block(block) = block;
-    for block_item in block {
-        type_check_block_item(block_item, symbol_table).context("type checking a block")?;
-    }
-    Ok(())
+    let block = block
+        .into_iter()
+        .map(|block_item| {
+            type_check_block_item(block_item, symbol_table)
+                .context("type checking a block")
+                .unwrap()
+        })
+        .collect();
+
+    Ok(parser::Block::Block(block))
 }
 
 fn type_check_block_item(
-    block_item: &parser::BlockItem,
+    block_item: parser::BlockItem,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<parser::BlockItem> {
     match block_item {
-        parser::BlockItem::Statement(statement) => {
-            type_check_statement(statement, symbol_table).context("type checking a block item")?
-        }
-        parser::BlockItem::Declaration(declaration) => {
+        parser::BlockItem::Statement(statement) => Ok(parser::BlockItem::Statement(
+            type_check_statement(statement, symbol_table).context("type checking a block item")?,
+        )),
+        parser::BlockItem::Declaration(declaration) => Ok(parser::BlockItem::Declaration(
             type_check_declaration(declaration, symbol_table)
-                .context("type checking a block item")?
-        }
+                .context("type checking a block item")?,
+        )),
     }
-    Ok(())
 }
 
 fn type_check_statement(
-    statement: &parser::Statement,
+    statement: parser::Statement,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<parser::Statement> {
     match statement {
         parser::Statement::Return(expression) | parser::Statement::Expression(expression) => {
             type_check_expression(expression, symbol_table)
@@ -458,27 +482,29 @@ fn type_check_for_init(
 }
 
 fn type_check_declaration(
-    declaration: &parser::Declaration,
+    declaration: parser::Declaration,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<parser::Declaration> {
     match declaration {
         parser::Declaration::VariableDeclaration(variable_declaration) => {
-            type_check_variable_declaration(variable_declaration, symbol_table)
-                .context("type checking a declaration")?
+            Ok(parser::Declaration::VariableDeclaration(
+                type_check_variable_declaration(variable_declaration, symbol_table)
+                    .context("type checking a declaration")?,
+            ))
         }
         parser::Declaration::FunctionDeclaration(function_declaration) => {
-            type_check_function_declaration(function_declaration, symbol_table)
-                .context("type checking a declaration")?
+            Ok(parser::Declaration::FunctionDeclaration(
+                type_check_function_declaration(function_declaration, symbol_table)
+                    .context("type checking a declaration")?,
+            ))
         }
     }
-
-    Ok(())
 }
 
 fn type_check_expression(
-    expression: &parser::Expression,
+    expression: parser::TypedExpression,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<parser::TypedExpression> {
     match expression {
         parser::Expression::Var { identifier } => {
             if matches!(
