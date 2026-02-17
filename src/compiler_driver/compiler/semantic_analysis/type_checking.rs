@@ -538,6 +538,21 @@ fn type_check_expression(
                 },
             })
         }
+        parser::Expression::Unary(unary_operator, inner_expression) => {
+            let typed_inner_expression = type_check_expression(*inner_expression, symbol_table)
+                .context("type checking unary expression")?;
+            let expression_type = match unary_operator {
+                parser::UnaryOperator::Not => Type::Int,
+                _ => typed_inner_expression.expression_type,
+            };
+            Ok(parser::TypedExpression {
+                expression_type,
+                expression: parser::Expression::Unary(
+                    unary_operator,
+                    Box::new(typed_inner_expression),
+                ),
+            })
+        }
         parser::Expression::FunctionCall {
             identifier,
             arguments,
@@ -565,7 +580,6 @@ fn type_check_expression(
             }
             Ok(())
         }
-        parser::Expression::Unary(_, expression) => type_check_expression(expression, symbol_table),
         parser::Expression::BinaryOperation {
             left_operand,
             right_operand,
