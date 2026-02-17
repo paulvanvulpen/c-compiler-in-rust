@@ -15,7 +15,8 @@ fn type_check_variable_declaration(
         storage_class,
     } = variable_declaration;
 
-    match storage_class {
+    let mut updated_init: Option<parser::TypedExpression> = None;
+    match &storage_class {
         Some(storage_class) => match storage_class {
             parser::StorageClass::Extern => {
                 if init.is_some() {
@@ -26,7 +27,7 @@ fn type_check_variable_declaration(
                         bail!(
                             "Conflicting types {:?} and {:?} found for {}",
                             old.symbol_type,
-                            variable_type,
+                            variable_type.clone(),
                             identifier
                         )
                     }
@@ -34,7 +35,7 @@ fn type_check_variable_declaration(
                     symbol_table.insert(
                         identifier.clone(),
                         symbol_table::Symbol {
-                            symbol_type: variable_type,
+                            symbol_type: variable_type.clone(),
                             identifier_attributes:
                                 symbol_table::IdentifierAttributes::StaticStorageAttribute {
                                     init: symbol_table::InitialValue::NoInitializer,
@@ -62,6 +63,7 @@ fn type_check_variable_declaration(
                         &variable_type,
                     )),
                 };
+
                 symbol_table.insert(
                     identifier.clone(),
                     symbol_table::Symbol {
@@ -79,22 +81,22 @@ fn type_check_variable_declaration(
             symbol_table.insert(
                 identifier.clone(),
                 symbol_table::Symbol {
-                    symbol_type: Type::Int,
+                    symbol_type: variable_type.clone(),
                     identifier_attributes: symbol_table::IdentifierAttributes::LocalAttribute,
                 },
             );
             if let Some(init) = init {
-                todo!("This is where I left off. Do something similar here to line 328 \
-                let body: Option< etc.");
-                type_check_expression(init, symbol_table)
-                    .context("type checking a variable declaration")?
+                updated_init = Some(
+                    type_check_expression(init, symbol_table)
+                        .context("type checking a variable declaration")?,
+                )
             }
         }
     }
 
     Ok(parser::VariableDeclaration {
         identifier,
-        init,
+        init: updated_init,
         variable_type,
         storage_class,
     })
@@ -137,8 +139,7 @@ fn type_check_file_scope_variable_declaration(
             if let parser::Expression::Constant(constant) = &typed_expression.expression {
                 symbol_table::InitialValue::Initial(get_static_init(constant, &variable_type))
             } else {
-                b
-                ail!("Non-constant initializer")
+                bail!("Non-constant initializer")
             }
         }
         None => {
@@ -260,6 +261,7 @@ fn type_check_function_declaration(
         storage_class,
     } = function_declaration;
 
+    todo!("looks like return type isn't used?");
     let (parameter_types, return_type) = match &function_type {
         Type::Undefined | Type::Int | Type::Long => unreachable!(
             "non-function-type found when type checking a file scope function declaration"
