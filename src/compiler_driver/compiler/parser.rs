@@ -60,14 +60,14 @@ pub struct FunctionDeclaration {
     pub identifier: String,
     pub parameters: Vec<String>,
     pub body: Option<Block>,
-    pub function_type: symbol_table::Type,
+    pub function_type: Type,
     pub storage_class: Option<StorageClass>,
 }
 
 pub struct VariableDeclaration {
     pub identifier: String,
     pub init: Option<TypedExpression>,
-    pub variable_type: symbol_table::Type,
+    pub variable_type: Type,
     pub storage_class: Option<StorageClass>,
 }
 

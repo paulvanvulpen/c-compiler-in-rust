@@ -504,25 +504,46 @@ fn type_check_declaration(
 }
 
 fn type_check_expression(
-    expression: parser::TypedExpression,
+    typed_expression: parser::TypedExpression,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<parser::TypedExpression> {
-    match expression {
+    match typed_expression.expression {
+        parser::Expression::Constant(constant) => Ok(parser::TypedExpression {
+            expression_type: match constant {
+                Constant::ConstInt(_) => Type::Int,
+                Constant::ConstLong(_) => Type::Long,
+            },
+            expression: typed_expression.expression,
+        }),
         parser::Expression::Var { identifier } => {
-            if matches!(
-                symbol_table[identifier].symbol_type,
-                symbol_table::Type::FuncType { .. }
-            ) {
+            if matches!(symbol_table[&identifier].symbol_type, Type::FuncType { .. }) {
                 bail!("Function name used as a variable!");
             }
-            Ok(())
+            Ok(parser::TypedExpression {
+                expression_type: symbol_table[&identifier].symbol_type,
+                expression: typed_expression.expression,
+            })
+        }
+        parser::Expression::Cast {
+            target_type,
+            expression: inner_expression,
+        } => {
+            let typed_inner_expression = type_check_expression(*inner_expression, symbol_table)
+                .context("type checking cast expression")?;
+            Ok(parser::TypedExpression {
+                expression_type: target_type,
+                expression: parser::Expression::Cast {
+                    target_type,
+                    expression: Box::new(typed_inner_expression),
+                },
+            })
         }
         parser::Expression::FunctionCall {
             identifier,
             arguments,
         } => {
             if matches!(
-                symbol_table[identifier].symbol_type,
+                symbol_table[&identifier].symbol_type,
                 symbol_table::Type::Int | symbol_table::Type::Long
             ) {
                 bail!("Variable name used as a function!");
@@ -544,7 +565,6 @@ fn type_check_expression(
             }
             Ok(())
         }
-        parser::Expression::Cast { .. } => todo!("implement this"),
         parser::Expression::Unary(_, expression) => type_check_expression(expression, symbol_table),
         parser::Expression::BinaryOperation {
             left_operand,
@@ -560,7 +580,6 @@ fn type_check_expression(
             type_check_expression(middle_operand, symbol_table)?;
             type_check_expression(right_operand, symbol_table)
         }
-        parser::Expression::Constant(_) => Ok(()),
     }
 }
 
