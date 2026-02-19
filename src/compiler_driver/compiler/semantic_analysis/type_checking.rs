@@ -622,6 +622,25 @@ fn type_check_expression(
                 ),
             })
         }
+        parser::Expression::Conditional(left_operand, middle_operand, right_operand) => {
+            let typed_left_operand = type_check_expression(*left_operand, symbol_table)?;
+            let typed_middle_operand = type_check_expression(*middle_operand, symbol_table)?;
+            let typed_right_operand = type_check_expression(*right_operand, symbol_table)?;
+            let common_type = typed_middle_operand
+                .expression_type
+                .common_with(&typed_right_operand.expression_type)
+                .context("type_checking an expression")?;
+            let promoted_middle_operand = typed_left_operand.cast_to(&common_type);
+            let promoted_right_operand = typed_right_operand.cast_to(&common_type);
+            Ok(parser::TypedExpression {
+                expression_type: common_type,
+                expression: parser::Expression::Conditional(
+                    Box::new(typed_left_operand),
+                    Box::new(promoted_middle_operand),
+                    Box::new(promoted_right_operand),
+                ),
+            })
+        }
         parser::Expression::FunctionCall {
             identifier,
             arguments,
@@ -648,11 +667,6 @@ fn type_check_expression(
                     .context("type checking an expression")?
             }
             Ok(())
-        }
-        parser::Expression::Conditional(left_operand, middle_operand, right_operand) => {
-            type_check_expression(left_operand, symbol_table)?;
-            type_check_expression(middle_operand, symbol_table)?;
-            type_check_expression(right_operand, symbol_table)
         }
     }
 }
