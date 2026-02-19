@@ -1,3 +1,5 @@
+use anyhow::bail;
+
 #[derive(Debug, PartialEq, Clone, Default)]
 pub enum Type {
     #[default]
@@ -8,6 +10,16 @@ pub enum Type {
         parameter_types: Vec<Type>,
         return_type: Box<Type>,
     },
+}
+
+impl Type {
+    pub fn common_with(&self, other: &Self) -> anyhow::Result<Self> {
+        match (self, other) {
+            (t1, t2) if t1 == t2 => Ok(t1.clone()),
+            (Type::Int, Type::Long) | (Type::Long, Type::Int) => Ok(Type::Long),
+            _ => bail!("unknown or invalid comparison"),
+        }
+    }
 }
 
 pub enum IdentifierAttributes {

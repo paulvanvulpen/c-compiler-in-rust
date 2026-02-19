@@ -85,6 +85,22 @@ impl From<Expression> for TypedExpression {
     }
 }
 
+impl TypedExpression {
+    pub fn promote_to(self, target: &Type) -> Self {
+        if &self.expression_type == target {
+            self
+        } else {
+            TypedExpression {
+                expression_type: target.clone(),
+                expression: Expression::Cast {
+                    target_type: target.clone(),
+                    expression: Box::new(self),
+                },
+            }
+        }
+    }
+}
+
 pub enum StorageClass {
     Static,
     Extern,

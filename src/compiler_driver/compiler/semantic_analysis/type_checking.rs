@@ -4,6 +4,10 @@ use crate::compiler_driver::compiler::symbol_table::{Constant, Type};
 use anyhow::{Context, bail};
 use std::collections::hash_map::{Entry, HashMap};
 
+// I wonder if I should consider these methods implementations of their respective types.
+// rather than a set of free functions, each type for which a type check is defined, has its
+// own implementation of type-check.
+
 fn type_check_variable_declaration(
     variable_declaration: parser::VariableDeclaration,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
@@ -179,7 +183,7 @@ fn type_check_file_scope_variable_declaration(
                     Some(storage_class) => match storage_class {
                         parser::StorageClass::Extern => *is_old_variable_globally_visible,
                         parser::StorageClass::Static => {
-                            // marks explicitly to not be globally visible
+                            // Static marks it explicitly to NOT be globally visible
                             if *is_old_variable_globally_visible {
                                 bail!("Conflicting variable linkage")
                             }
@@ -187,7 +191,7 @@ fn type_check_file_scope_variable_declaration(
                         }
                     },
                     None => {
-                        // marks explicitly to be globally visible
+                        // None marks it implicitly to be globally visible
                         if !*is_old_variable_globally_visible {
                             bail!("Conflicting variable linkage")
                         }
@@ -553,6 +557,56 @@ fn type_check_expression(
                 ),
             })
         }
+        parser::Expression::BinaryOperation {
+            binary_operator,
+            left_operand,
+            right_operand,
+        } => {
+            let typed_left_operand = type_check_expression(*left_operand, symbol_table)
+                .context("type_checking an expression")?;
+            let typed_right_operand = type_check_expression(*right_operand, symbol_table)
+                .context("type_checking an expression")?;
+            match binary_operator {
+                parser::BinaryOperator::And | parser::BinaryOperator::Or => {
+                    Ok(parser::TypedExpression {
+                        expression_type: Type::Int,
+                        expression: parser::Expression::BinaryOperation {
+                            binary_operator,
+                            left_operand: Box::new(typed_left_operand),
+                            right_operand: Box::new(typed_right_operand),
+                        },
+                    })
+                }
+                _ => {
+                    let common_type = typed_left_operand
+                        .expression_type
+                        .common_with(&typed_right_operand.expression_type)
+                        .context("type_checking an expression")?;
+
+                    let promoted_left_operand = typed_left_operand.promote_to(&common_type);
+                    let promoted_right_operand = typed_right_operand.promote_to(&common_type);
+                    let promoted_binary_expression = parser::Expression::BinaryOperation {
+                        binary_operator,
+                        left_operand: Box::new(promoted_left_operand),
+                        right_operand: Box::new(promoted_right_operand),
+                    };
+                    match binary_operator {
+                        parser::BinaryOperator::Add
+                        | parser::BinaryOperator::Subtract
+                        | parser::BinaryOperator::Multiply
+                        | parser::BinaryOperator::Divide
+                        | parser::BinaryOperator::Remainder => Ok(parser::TypedExpression {
+                            expression_type: common_type,
+                            expression: promoted_binary_expression,
+                        }),
+                        _ => Ok(parser::TypedExpression {
+                            expression_type: Type::Int,
+                            expression: promoted_binary_expression,
+                        }),
+                    }
+                }
+            }
+        }
         parser::Expression::FunctionCall {
             identifier,
             arguments,
@@ -580,12 +634,7 @@ fn type_check_expression(
             }
             Ok(())
         }
-        parser::Expression::BinaryOperation {
-            left_operand,
-            right_operand,
-            ..
-        }
-        | parser::Expression::Assignment(left_operand, right_operand) => {
+        parser::Expression::Assignment(left_operand, right_operand) => {
             type_check_expression(left_operand, symbol_table)?;
             type_check_expression(right_operand, symbol_table)
         }
