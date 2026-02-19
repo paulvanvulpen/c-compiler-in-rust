@@ -86,7 +86,7 @@ impl From<Expression> for TypedExpression {
 }
 
 impl TypedExpression {
-    pub fn promote_to(self, target: &Type) -> Self {
+    pub fn cast_to(self, target: &Type) -> Self {
         if &self.expression_type == target {
             self
         } else {

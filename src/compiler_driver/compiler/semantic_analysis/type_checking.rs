@@ -583,8 +583,8 @@ fn type_check_expression(
                         .common_with(&typed_right_operand.expression_type)
                         .context("type_checking an expression")?;
 
-                    let promoted_left_operand = typed_left_operand.promote_to(&common_type);
-                    let promoted_right_operand = typed_right_operand.promote_to(&common_type);
+                    let promoted_left_operand = typed_left_operand.cast_to(&common_type);
+                    let promoted_right_operand = typed_right_operand.cast_to(&common_type);
                     let promoted_binary_expression = parser::Expression::BinaryOperation {
                         binary_operator,
                         left_operand: Box::new(promoted_left_operand),
@@ -606,6 +606,21 @@ fn type_check_expression(
                     }
                 }
             }
+        }
+        parser::Expression::Assignment(left_operand, right_operand) => {
+            let typed_left_operand = type_check_expression(*left_operand, symbol_table)
+                .context("type_checking an expression")?;
+            let typed_right_operand = type_check_expression(*right_operand, symbol_table)
+                .context("type_checking an expression")?;
+            let converted_right_operand =
+                typed_right_operand.cast_to(&typed_left_operand.expression_type);
+            Ok(parser::TypedExpression {
+                expression_type: typed_left_operand.expression_type,
+                expression: parser::Expression::Assignment(
+                    Box::new(typed_left_operand),
+                    Box::new(converted_right_operand),
+                ),
+            })
         }
         parser::Expression::FunctionCall {
             identifier,
@@ -633,10 +648,6 @@ fn type_check_expression(
                     .context("type checking an expression")?
             }
             Ok(())
-        }
-        parser::Expression::Assignment(left_operand, right_operand) => {
-            type_check_expression(left_operand, symbol_table)?;
-            type_check_expression(right_operand, symbol_table)
         }
         parser::Expression::Conditional(left_operand, middle_operand, right_operand) => {
             type_check_expression(left_operand, symbol_table)?;
