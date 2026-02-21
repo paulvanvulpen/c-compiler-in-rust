@@ -364,12 +364,13 @@ fn type_check_function_declaration(
 fn type_check_block(
     block: parser::Block,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
+    enclosing_function_return_type: &Type,
 ) -> anyhow::Result<parser::Block> {
     let parser::Block::Block(block) = block;
     let block = block
         .into_iter()
         .map(|block_item| {
-            type_check_block_item(block_item, symbol_table)
+            type_check_block_item(block_item, symbol_table, enclosing_function_return_type)
                 .context("type checking a block")
                 .unwrap()
         })
@@ -381,10 +382,12 @@ fn type_check_block(
 fn type_check_block_item(
     block_item: parser::BlockItem,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
+    enclosing_function_return_type: &Type,
 ) -> anyhow::Result<parser::BlockItem> {
     match block_item {
         parser::BlockItem::Statement(statement) => Ok(parser::BlockItem::Statement(
-            type_check_statement(statement, symbol_table).context("type checking a block item")?,
+            type_check_statement(statement, symbol_table, enclosing_function_return_type)
+                .context("type checking a block item")?,
         )),
         parser::BlockItem::Declaration(declaration) => Ok(parser::BlockItem::Declaration(
             type_check_declaration(declaration, symbol_table)
@@ -396,95 +399,195 @@ fn type_check_block_item(
 fn type_check_statement(
     statement: parser::Statement,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
+    enclosing_function_return_type: &Type,
 ) -> anyhow::Result<parser::Statement> {
     match statement {
-        parser::Statement::Return(expression) | parser::Statement::Expression(expression) => {
+        parser::Statement::Return(expression) => Ok(parser::Statement::Return(
             type_check_expression(expression, symbol_table)
-        }
+                .context("type checking a statement")?
+                .cast_to(enclosing_function_return_type),
+        )),
+        parser::Statement::Expression(expression) => Ok(parser::Statement::Return(
+            type_check_expression(expression, symbol_table).context("type checking a statement")?,
+        )),
         parser::Statement::If {
             condition,
             then_statement,
             optional_else_statement,
-        } => {
-            type_check_expression(condition, symbol_table).context("type checking a statement")?;
-            type_check_statement(then_statement, symbol_table)
-                .context("type checking a statement")?;
-            if let Some(else_statement) = optional_else_statement {
-                type_check_statement(else_statement, symbol_table)
-                    .context("type checking a statement")?;
-            }
-            Ok(())
-        }
-        parser::Statement::Label(_, statement) => {
-            type_check_statement(statement, symbol_table).context("type checking a statement")
-        }
-        parser::Statement::Compound(block) => {
-            type_check_block(block, symbol_table).context("type checking a block")
-        }
+        } => Ok(parser::Statement::If {
+            condition: type_check_expression(condition, symbol_table)
+                .context("type checking a statement")?,
+            then_statement: Box::new(
+                type_check_statement(
+                    *then_statement,
+                    symbol_table,
+                    enclosing_function_return_type,
+                )
+                .context("type checking a statement")?,
+            ),
+            optional_else_statement: if let Some(else_statement) = optional_else_statement {
+                Some(Box::new(
+                    type_check_statement(
+                        *else_statement,
+                        symbol_table,
+                        enclosing_function_return_type,
+                    )
+                    .context("type checking a statement")?,
+                ))
+            } else {
+                None
+            },
+        }),
+        parser::Statement::Label(identifier, statement) => Ok(parser::Statement::Label(
+            identifier,
+            Box::new(
+                type_check_statement(*statement, symbol_table, enclosing_function_return_type)
+                    .context("type checking a statement")?,
+            ),
+        )),
+        parser::Statement::Compound(block) => Ok(parser::Statement::Compound(
+            type_check_block(block, symbol_table, enclosing_function_return_type)
+                .context("type checking a block")?,
+        )),
         parser::Statement::While {
-            condition, body, ..
-        }
-        | parser::Statement::DoWhile {
-            body, condition, ..
-        } => {
-            type_check_expression(condition, symbol_table).context("type checking a statement")?;
-            type_check_statement(body, symbol_table).context("type checking a statement")
-        }
+            condition,
+            body,
+            label,
+        } => Ok(parser::Statement::While {
+            condition: type_check_expression(condition, symbol_table)
+                .context("type checking a statement")?,
+            body: Box::new(
+                type_check_statement(*body, symbol_table, enclosing_function_return_type)
+                    .context("type checking a statement")?,
+            ),
+            label,
+        }),
+        parser::Statement::DoWhile {
+            body,
+            condition,
+            label,
+        } => Ok(parser::Statement::DoWhile {
+            body: Box::new(
+                type_check_statement(*body, symbol_table, enclosing_function_return_type)
+                    .context("type checking a statement")?,
+            ),
+            condition: type_check_expression(condition, symbol_table)
+                .context("type checking a statement")?,
+            label,
+        }),
         parser::Statement::For {
             init,
             condition,
             post,
             body,
-            ..
-        } => {
-            type_check_for_init(init, symbol_table).context("type checking a statement")?;
-            if let Some(condition) = condition {
-                type_check_expression(condition, symbol_table)
-                    .context("type checking a statement")?;
-            }
-            if let Some(post) = post {
-                type_check_expression(post, symbol_table).context("type checking a statement")?;
-            }
-            type_check_statement(body, symbol_table).context("type checking a statement")
-        }
+            label,
+        } => Ok(parser::Statement::For {
+            init: type_check_for_init(init, symbol_table).context("type checking a statement")?,
+            condition: if let Some(condition) = condition {
+                Some(
+                    type_check_expression(condition, symbol_table)
+                        .context("type checking a statement")?,
+                )
+            } else {
+                None
+            },
+            post: if let Some(post) = post {
+                Some(
+                    type_check_expression(post, symbol_table)
+                        .context("type checking a statement")?,
+                )
+            } else {
+                None
+            },
+            body: Box::new(
+                type_check_statement(*body, symbol_table, enclosing_function_return_type)
+                    .context("type checking a statement")?,
+            ),
+            label,
+        }),
         parser::Statement::Switch {
-            condition, body, ..
-        } => {
-            type_check_expression(condition, symbol_table).context("type checking a statement")?;
-            type_check_statement(body, symbol_table).context("type checking a statement")?;
-            Ok(())
-        }
+            condition,
+            cases,
+            body,
+            label,
+        } => Ok(parser::Statement::Switch {
+            condition: type_check_expression(condition, symbol_table)
+                .context("type checking a statement")?,
+            cases,
+            body: Box::new(
+                type_check_statement(*body, symbol_table, enclosing_function_return_type)
+                    .context("type checking a statement")?,
+            ),
+            label,
+        }),
         parser::Statement::Case {
-            follow_statement, ..
-        }
-        | parser::Statement::Default {
-            follow_statement, ..
-        } => type_check_statement(follow_statement, symbol_table)
-            .context("type checking a statement"),
+            match_value,
+            follow_statement,
+            break_label,
+            label,
+        } => Ok(parser::Statement::Case {
+            match_value,
+            follow_statement: Box::new(
+                type_check_statement(
+                    *follow_statement,
+                    symbol_table,
+                    enclosing_function_return_type,
+                )
+                .context("type checking a statement")?,
+            ),
+            break_label,
+            label,
+        }),
+        parser::Statement::Default {
+            break_label,
+            follow_statement,
+            label,
+        } => Ok(parser::Statement::Default {
+            break_label,
+            follow_statement: Box::new(
+                type_check_statement(
+                    *follow_statement,
+                    symbol_table,
+                    enclosing_function_return_type,
+                )
+                .context("type checking a statement")?,
+            ),
+            label,
+        }),
+
         parser::Statement::Goto(..)
         | parser::Statement::Break { .. }
         | parser::Statement::Continue { .. }
-        | parser::Statement::Null => Ok(()),
+        | parser::Statement::Null => Ok(statement),
     }
 }
 
 fn type_check_for_init(
-    for_init: &parser::ForInit,
+    for_init: parser::ForInit,
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<parser::ForInit> {
     match for_init {
         parser::ForInit::InitialDeclaration(variable_declaration) => {
             let parser::VariableDeclaration { storage_class, .. } = &variable_declaration;
             if storage_class.is_some() {
                 bail!("for loop header should not contain a storage-class specifier")
             }
-            type_check_variable_declaration(variable_declaration, symbol_table)
+            Ok(parser::ForInit::InitialDeclaration(
+                type_check_variable_declaration(variable_declaration, symbol_table)
+                    .context("type checking a for init")?,
+            ))
         }
         parser::ForInit::InitialOptionalExpression(optional_expression) => {
-            if let Some(expression) = optional_expression {
-                type_check_expression(expression, symbol_table)?
-            }
-            Ok(())
+            Ok(parser::ForInit::InitialOptionalExpression(
+                if let Some(expression) = optional_expression {
+                    Some(
+                        type_check_expression(expression, symbol_table)
+                            .context("type checking a for init")?,
+                    )
+                } else {
+                    None
+                },
+            ))
         }
     }
 }
