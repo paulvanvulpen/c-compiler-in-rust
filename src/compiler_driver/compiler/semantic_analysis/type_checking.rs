@@ -265,7 +265,6 @@ fn type_check_function_declaration(
         storage_class,
     } = function_declaration;
 
-    todo!("looks like return type isn't used?");
     let (parameter_types, return_type) = match &function_type {
         Type::Undefined | Type::Int | Type::Long => unreachable!(
             "non-function-type found when type checking a file scope function declaration"
@@ -345,7 +344,10 @@ fn type_check_function_declaration(
                     },
                 );
             });
-        Some(type_check_block(body, symbol_table).context("type checking function declaration")?)
+        Some(
+            type_check_block(body, symbol_table, &return_type)
+                .context("type checking function declaration")?,
+        )
     } else {
         None
     };
