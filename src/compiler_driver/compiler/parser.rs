@@ -129,7 +129,7 @@ impl Default for BlockItem {
 
 pub struct LabelAndMatchValue {
     pub unique_label: String,
-    pub match_value: Option<isize>,
+    pub match_value: Option<usize>,
 }
 
 #[derive(Default)]
@@ -174,7 +174,7 @@ pub enum Statement {
         label: Option<String>,
     },
     Case {
-        match_value: isize,
+        match_value: usize,
         follow_statement: Box<Statement>,
         break_label: Option<String>,
         label: String,
@@ -746,7 +746,7 @@ fn parse_statement(lexer_tokens: &mut [Token]) -> Result<(Statement, &mut [Token
         }
         Token::Case => {
             let lexer_tokens = &mut lexer_tokens[1..];
-            let match_value: isize = match &lexer_tokens[0] {
+            let match_value: usize = match &lexer_tokens[0] {
                 Token::IntegerConstant(x) | Token::LongIntegerConstant(x) => *x,
                 _ => unreachable!("earlier check already guarantees this is a constant"),
             };
@@ -808,14 +808,14 @@ fn parse_statement(lexer_tokens: &mut [Token]) -> Result<(Statement, &mut [Token
 fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(TypedExpression, &mut [Token])> {
     match &mut lexer_tokens[0] {
         Token::IntegerConstant(value) => {
-            if *value > (2isize.pow(63) - 1) {
+            if *value > (2usize.pow(63) - 1) {
                 bail!(
                     "Constant {:?} is too large to represent as an int or long",
                     &mut lexer_tokens[0]
                 )
             }
 
-            if *value > (2isize.pow(31) - 1) {
+            if *value > (2usize.pow(31) - 1) {
                 Ok((
                     Expression::Constant(symbol_table::Constant::ConstLong(*value as i64)).into(),
                     &mut lexer_tokens[1..],
@@ -828,7 +828,7 @@ fn parse_primary(lexer_tokens: &mut [Token]) -> Result<(TypedExpression, &mut [T
             }
         }
         Token::LongIntegerConstant(value) => {
-            if *value > (2isize.pow(63) - 1) {
+            if *value > (2usize.pow(63) - 1) {
                 bail!(
                     "Constant {:?} is too large to represent as an int or long",
                     &mut lexer_tokens[0]
