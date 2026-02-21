@@ -184,660 +184,664 @@ fn make_temporary() -> String {
 }
 
 fn convert_expression(expression: parser::Expression) -> (Vec<Instruction>, Value) {
-    match expression {
-        parser::Expression::Constant(value) => {
-            todo!("reevaluate how to write this")
-            // let instructions: Vec<Instruction> = vec![];
-            // (instructions, Value::Constant(value))
-        }
-        parser::Expression::Var { identifier } => {
-            let instructions: Vec<Instruction> = vec![];
-            (instructions, Value::Var(identifier))
-        }
-        parser::Expression::Cast { .. } => todo!("not yet implemented"),
-        parser::Expression::Unary(unary_operator, boxed_expression) => {
-            let unary_operator = convert_unary_operator(unary_operator);
-            match unary_operator {
-                UnaryOperator::Complement | UnaryOperator::Negate | UnaryOperator::Not => {
-                    let (mut instructions, source) = convert_expression(*boxed_expression);
-                    let destination = Value::Var(make_temporary());
-                    instructions.push(Instruction::Unary {
-                        unary_operator,
-                        source,
-                        destination: destination.clone(),
-                    });
-                    (instructions, destination)
-                }
-                UnaryOperator::PrefixDecrement => {
-                    convert_expression(parser::Expression::BinaryOperation {
-                        binary_operator: parser::BinaryOperator::DifferenceAssign,
-                        left_operand: boxed_expression,
-                        right_operand: Box::new(parser::Expression::Constant(
-                            symbol_table::Constant::ConstInt(1),
-                        )),
-                    })
-                }
-                UnaryOperator::PrefixIncrement => {
-                    convert_expression(parser::Expression::BinaryOperation {
-                        binary_operator: parser::BinaryOperator::SumAssign,
-                        left_operand: boxed_expression,
-                        right_operand: Box::new(parser::Expression::Constant(
-                            symbol_table::Constant::ConstInt(1),
-                        )),
-                    })
-                }
-                UnaryOperator::PostfixDecrement | UnaryOperator::PostfixIncrement => {
-                    let (mut instructions, destination_operand) =
-                        convert_expression(*boxed_expression);
+    (vec![], Value::Constant(0))
 
-                    let unmodified_rhs = Value::Var(make_temporary());
-
-                    instructions.push(Instruction::Copy {
-                        source: destination_operand.clone(),
-                        destination: unmodified_rhs.clone(),
-                    });
-
-                    let destination = Value::Var(make_temporary());
-                    let binary_operator = match unary_operator {
-                        UnaryOperator::PostfixDecrement => BinaryOperator::Subtract,
-                        UnaryOperator::PostfixIncrement => BinaryOperator::Add,
-                        _ => panic!("Expected postfix operator"),
-                    };
-
-                    instructions.push(Instruction::Binary {
-                        binary_operator: binary_operator,
-                        source1: destination_operand.clone(),
-                        source2: Value::Constant(1),
-                        destination: destination.clone(),
-                    });
-
-                    instructions.push(Instruction::Copy {
-                        source: destination,
-                        destination: destination_operand,
-                    });
-
-                    (instructions, unmodified_rhs)
-                }
-            }
-        }
-        parser::Expression::BinaryOperation {
-            binary_operator,
-            left_operand,
-            right_operand,
-        } => match binary_operator {
-            parser::BinaryOperator::Assign => panic!(
-                "parser should have converted the Assign operation into an Assignment Expressions"
-            ),
-            parser::BinaryOperator::Conditional => panic!(
-                "parser should have converted the conditional operation into a Conditional Expression"
-            ),
-            parser::BinaryOperator::Add
-            | parser::BinaryOperator::Subtract
-            | parser::BinaryOperator::Multiply
-            | parser::BinaryOperator::Divide
-            | parser::BinaryOperator::Remainder
-            | parser::BinaryOperator::LeftShift
-            | parser::BinaryOperator::RightShift
-            | parser::BinaryOperator::BitwiseAnd
-            | parser::BinaryOperator::BitwiseXOr
-            | parser::BinaryOperator::BitwiseOr
-            | parser::BinaryOperator::Equal
-            | parser::BinaryOperator::NotEqual
-            | parser::BinaryOperator::LessThan
-            | parser::BinaryOperator::LessOrEqual
-            | parser::BinaryOperator::GreaterThan
-            | parser::BinaryOperator::GreaterOrEqual => {
-                let binary_operator = convert_binary_operator(binary_operator);
-                let (mut instructions1, destination_left_operand) =
-                    convert_expression(*left_operand);
-                let (instructions2, destination_right_operand) = convert_expression(*right_operand);
-                instructions1.extend(instructions2);
-                let mut instructions = instructions1;
-
-                let final_destination = make_temporary();
-                let destination = Value::Var(final_destination);
-                instructions.push(Instruction::Binary {
-                    binary_operator,
-                    source1: destination_left_operand,
-                    source2: destination_right_operand,
-                    destination: destination.clone(),
-                });
-                (instructions, destination)
-            }
-            parser::BinaryOperator::SumAssign
-            | parser::BinaryOperator::DifferenceAssign
-            | parser::BinaryOperator::ProductAssign
-            | parser::BinaryOperator::QuotientAssign
-            | parser::BinaryOperator::RemainderAssign
-            | parser::BinaryOperator::BitwiseAndAssign
-            | parser::BinaryOperator::BitwiseOrAssign
-            | parser::BinaryOperator::BitwiseXOrAssign
-            | parser::BinaryOperator::LeftShiftAssign
-            | parser::BinaryOperator::RightShiftAssign => {
-                let binary_operator = convert_binary_operator(binary_operator);
-                let (mut instructions1, destination_left_operand) =
-                    convert_expression(*left_operand);
-                let (instructions2, destination_right_operand) = convert_expression(*right_operand);
-                instructions1.extend(instructions2);
-                let mut instructions = instructions1;
-
-                let final_destination = make_temporary();
-                let destination = Value::Var(final_destination);
-                instructions.push(Instruction::Binary {
-                    binary_operator,
-                    source1: destination_left_operand.clone(),
-                    source2: destination_right_operand,
-                    destination: destination.clone(),
-                });
-
-                instructions.push(Instruction::Copy {
-                    source: destination.clone(),
-                    destination: destination_left_operand,
-                });
-                (instructions, destination)
-            }
-            parser::BinaryOperator::And => {
-                // we conclude by an end result of 0 or 1. if either expression result is zero
-                // we jump to the false_label where we set the end result to zero
-                // when both results are non-zero then instead we set the result to one and jump
-                // straight to the end_label
-                let false_label = generator::make_label("false");
-                let end_label = generator::make_label("end");
-
-                let (left_instructions, destination_left_operand) =
-                    convert_expression(*left_operand);
-                let left_expression_result = make_temporary();
-                let left_expression_result = Value::Var(left_expression_result);
-                let mut instructions = left_instructions;
-                instructions.push(Instruction::Copy {
-                    source: destination_left_operand,
-                    destination: left_expression_result.clone(),
-                });
-                instructions.push(Instruction::JumpIfZero {
-                    condition: left_expression_result,
-                    target: false_label.clone(),
-                });
-
-                let (right_instructions, destination_right_operand) =
-                    convert_expression(*right_operand);
-                let right_expression_result = make_temporary();
-                let right_expression_result = Value::Var(right_expression_result);
-                instructions.extend(right_instructions);
-                instructions.push(Instruction::Copy {
-                    source: destination_right_operand,
-                    destination: right_expression_result.clone(),
-                });
-                instructions.push(Instruction::JumpIfZero {
-                    condition: right_expression_result,
-                    target: false_label.clone(),
-                });
-
-                let end_result = make_temporary();
-                let end_result = Value::Var(end_result);
-
-                instructions.push(Instruction::Copy {
-                    source: Value::Constant(1),
-                    destination: end_result.clone(),
-                });
-
-                instructions.push(Instruction::Jump {
-                    target: end_label.clone(),
-                });
-                instructions.push(Instruction::Label {
-                    identifier: false_label,
-                });
-                instructions.push(Instruction::Copy {
-                    source: Value::Constant(0),
-                    destination: end_result.clone(),
-                });
-                instructions.push(Instruction::Label {
-                    identifier: end_label,
-                });
-
-                (instructions, end_result)
-            }
-            parser::BinaryOperator::Or => {
-                // return with an end result of 0 or 1. If either expression is non-zero
-                // jump to a true_label where the end result is set to 1.
-                // if no jump occurs the statement where the end result it set to 0, followed
-                // by a jump to the end-label.
-                let true_label = generator::make_label("true");
-                let end_label = generator::make_label("end");
-                let (left_instructions, destination_left_operand) =
-                    convert_expression(*left_operand);
-                let mut instructions = left_instructions;
-                let left_expression_result = make_temporary();
-                let left_expression_result = Value::Var(left_expression_result);
-                instructions.push(Instruction::Copy {
-                    source: destination_left_operand,
-                    destination: left_expression_result.clone(),
-                });
-                instructions.push(Instruction::JumpIfNotZero {
-                    condition: left_expression_result,
-                    target: true_label.clone(),
-                });
-
-                let (right_instructions, destination_right_operand) =
-                    convert_expression(*right_operand);
-                let right_expression_result = make_temporary();
-                let right_expression_result = Value::Var(right_expression_result);
-                instructions.extend(right_instructions);
-                instructions.push(Instruction::Copy {
-                    source: destination_right_operand,
-                    destination: right_expression_result.clone(),
-                });
-                instructions.push(Instruction::JumpIfNotZero {
-                    condition: right_expression_result,
-                    target: true_label.clone(),
-                });
-
-                let end_result = make_temporary();
-                let end_result = Value::Var(end_result);
-
-                instructions.push(Instruction::Copy {
-                    source: Value::Constant(0),
-                    destination: end_result.clone(),
-                });
-
-                instructions.push(Instruction::Jump {
-                    target: end_label.clone(),
-                });
-
-                instructions.push(Instruction::Label {
-                    identifier: true_label,
-                });
-                instructions.push(Instruction::Copy {
-                    source: Value::Constant(1),
-                    destination: end_result.clone(),
-                });
-                instructions.push(Instruction::Label {
-                    identifier: end_label,
-                });
-
-                (instructions, end_result)
-            }
-        },
-        parser::Expression::Assignment(lhs_expression, rhs_expression) => {
-            let (.., lvalue) = convert_expression(*lhs_expression);
-            let (mut instructions, rvalue) = convert_expression(*rhs_expression);
-            instructions.push(Instruction::Copy {
-                source: rvalue,
-                destination: lvalue.clone(),
-            });
-            (instructions, lvalue)
-        }
-        parser::Expression::Conditional(left_expression, middle_expression, right_expression) => {
-            let end_label: String = generator::make_label("end");
-            let else_label: String = generator::make_label("else");
-
-            let (mut instructions, condition_destination) = convert_expression(*left_expression);
-            let left_expression_result = make_temporary();
-            let left_expression_result = Value::Var(left_expression_result);
-            instructions.push(Instruction::Copy {
-                source: condition_destination,
-                destination: left_expression_result.clone(),
-            });
-            instructions.push(Instruction::JumpIfZero {
-                condition: left_expression_result,
-                target: else_label.clone(),
-            });
-            let (then_instructions, then_destination) = convert_expression(*middle_expression);
-            instructions.extend(then_instructions);
-            let middle_expression_result = make_temporary();
-            let middle_expression_result = Value::Var(middle_expression_result);
-            instructions.push(Instruction::Copy {
-                source: then_destination.clone(),
-                destination: middle_expression_result.clone(),
-            });
-            let final_result = make_temporary();
-            let final_result = Value::Var(final_result);
-            instructions.push(Instruction::Copy {
-                source: middle_expression_result,
-                destination: final_result.clone(),
-            });
-            instructions.push(Instruction::Jump {
-                target: end_label.clone(),
-            });
-            instructions.push(Instruction::Label {
-                identifier: else_label,
-            });
-            let (else_instructions, else_destination) = convert_expression(*right_expression);
-            instructions.extend(else_instructions);
-            let right_expression_result = make_temporary();
-            let right_expression_result = Value::Var(right_expression_result);
-            instructions.push(Instruction::Copy {
-                source: else_destination.clone(),
-                destination: right_expression_result.clone(),
-            });
-            instructions.push(Instruction::Copy {
-                source: right_expression_result,
-                destination: final_result.clone(),
-            });
-            instructions.push(Instruction::Label {
-                identifier: end_label,
-            });
-            (instructions, final_result)
-        }
-        parser::Expression::FunctionCall {
-            identifier,
-            arguments,
-        } => {
-            let mut instructions = vec![];
-            let mut resolved_arguments = vec![];
-            for argument in arguments {
-                let (expression_instructions, destination) = convert_expression(argument);
-                instructions.extend(expression_instructions);
-                resolved_arguments.push(destination);
-            }
-            let function_call_result = make_temporary();
-            let function_call_result = Value::Var(function_call_result);
-            instructions.push(Instruction::FunCall {
-                identifier,
-                arguments: resolved_arguments,
-                destination: function_call_result.clone(),
-            });
-            (instructions, function_call_result)
-        }
-    }
+    // match expression {
+    //     parser::Expression::Constant(value) => {
+    //         todo!("reevaluate how to write this")
+    //         // let instructions: Vec<Instruction> = vec![];
+    //         // (instructions, Value::Constant(value))
+    //     }
+    //     parser::Expression::Var { identifier } => {
+    //         let instructions: Vec<Instruction> = vec![];
+    //         (instructions, Value::Var(identifier))
+    //     }
+    //     parser::Expression::Cast { .. } => todo!("not yet implemented"),
+    //     parser::Expression::Unary(unary_operator, boxed_expression) => {
+    //         let unary_operator = convert_unary_operator(unary_operator);
+    //         match unary_operator {
+    //             UnaryOperator::Complement | UnaryOperator::Negate | UnaryOperator::Not => {
+    //                 let (mut instructions, source) = convert_expression(boxed_expression);
+    //                 let destination = Value::Var(make_temporary());
+    //                 instructions.push(Instruction::Unary {
+    //                     unary_operator,
+    //                     source,
+    //                     destination: destination.clone(),
+    //                 });
+    //                 (instructions, destination)
+    //             }
+    //             UnaryOperator::PrefixDecrement => {
+    //                 convert_expression(parser::Expression::BinaryOperation {
+    //                     binary_operator: parser::BinaryOperator::DifferenceAssign,
+    //                     left_operand: boxed_expression,
+    //                     right_operand: Box::new(parser::Expression::Constant(
+    //                         symbol_table::Constant::ConstInt(1),
+    //                     )),
+    //                 })
+    //             }
+    //             UnaryOperator::PrefixIncrement => {
+    //                 convert_expression(parser::Expression::BinaryOperation {
+    //                     binary_operator: parser::BinaryOperator::SumAssign,
+    //                     left_operand: boxed_expression,
+    //                     right_operand: Box::new(parser::Expression::Constant(
+    //                         symbol_table::Constant::ConstInt(1),
+    //                     )),
+    //                 })
+    //             }
+    //             UnaryOperator::PostfixDecrement | UnaryOperator::PostfixIncrement => {
+    //                 let (mut instructions, destination_operand) =
+    //                     convert_expression(*boxed_expression);
+    //
+    //                 let unmodified_rhs = Value::Var(make_temporary());
+    //
+    //                 instructions.push(Instruction::Copy {
+    //                     source: destination_operand.clone(),
+    //                     destination: unmodified_rhs.clone(),
+    //                 });
+    //
+    //                 let destination = Value::Var(make_temporary());
+    //                 let binary_operator = match unary_operator {
+    //                     UnaryOperator::PostfixDecrement => BinaryOperator::Subtract,
+    //                     UnaryOperator::PostfixIncrement => BinaryOperator::Add,
+    //                     _ => panic!("Expected postfix operator"),
+    //                 };
+    //
+    //                 instructions.push(Instruction::Binary {
+    //                     binary_operator: binary_operator,
+    //                     source1: destination_operand.clone(),
+    //                     source2: Value::Constant(1),
+    //                     destination: destination.clone(),
+    //                 });
+    //
+    //                 instructions.push(Instruction::Copy {
+    //                     source: destination,
+    //                     destination: destination_operand,
+    //                 });
+    //
+    //                 (instructions, unmodified_rhs)
+    //             }
+    //         }
+    //     }
+    //     parser::Expression::BinaryOperation {
+    //         binary_operator,
+    //         left_operand,
+    //         right_operand,
+    //     } => match binary_operator {
+    //         parser::BinaryOperator::Assign => panic!(
+    //             "parser should have converted the Assign operation into an Assignment Expressions"
+    //         ),
+    //         parser::BinaryOperator::Conditional => panic!(
+    //             "parser should have converted the conditional operation into a Conditional Expression"
+    //         ),
+    //         parser::BinaryOperator::Add
+    //         | parser::BinaryOperator::Subtract
+    //         | parser::BinaryOperator::Multiply
+    //         | parser::BinaryOperator::Divide
+    //         | parser::BinaryOperator::Remainder
+    //         | parser::BinaryOperator::LeftShift
+    //         | parser::BinaryOperator::RightShift
+    //         | parser::BinaryOperator::BitwiseAnd
+    //         | parser::BinaryOperator::BitwiseXOr
+    //         | parser::BinaryOperator::BitwiseOr
+    //         | parser::BinaryOperator::Equal
+    //         | parser::BinaryOperator::NotEqual
+    //         | parser::BinaryOperator::LessThan
+    //         | parser::BinaryOperator::LessOrEqual
+    //         | parser::BinaryOperator::GreaterThan
+    //         | parser::BinaryOperator::GreaterOrEqual => {
+    //             let binary_operator = convert_binary_operator(binary_operator);
+    //             let (mut instructions1, destination_left_operand) =
+    //                 convert_expression(*left_operand);
+    //             let (instructions2, destination_right_operand) = convert_expression(*right_operand);
+    //             instructions1.extend(instructions2);
+    //             let mut instructions = instructions1;
+    //
+    //             let final_destination = make_temporary();
+    //             let destination = Value::Var(final_destination);
+    //             instructions.push(Instruction::Binary {
+    //                 binary_operator,
+    //                 source1: destination_left_operand,
+    //                 source2: destination_right_operand,
+    //                 destination: destination.clone(),
+    //             });
+    //             (instructions, destination)
+    //         }
+    //         parser::BinaryOperator::SumAssign
+    //         | parser::BinaryOperator::DifferenceAssign
+    //         | parser::BinaryOperator::ProductAssign
+    //         | parser::BinaryOperator::QuotientAssign
+    //         | parser::BinaryOperator::RemainderAssign
+    //         | parser::BinaryOperator::BitwiseAndAssign
+    //         | parser::BinaryOperator::BitwiseOrAssign
+    //         | parser::BinaryOperator::BitwiseXOrAssign
+    //         | parser::BinaryOperator::LeftShiftAssign
+    //         | parser::BinaryOperator::RightShiftAssign => {
+    //             let binary_operator = convert_binary_operator(binary_operator);
+    //             let (mut instructions1, destination_left_operand) =
+    //                 convert_expression(*left_operand);
+    //             let (instructions2, destination_right_operand) = convert_expression(*right_operand);
+    //             instructions1.extend(instructions2);
+    //             let mut instructions = instructions1;
+    //
+    //             let final_destination = make_temporary();
+    //             let destination = Value::Var(final_destination);
+    //             instructions.push(Instruction::Binary {
+    //                 binary_operator,
+    //                 source1: destination_left_operand.clone(),
+    //                 source2: destination_right_operand,
+    //                 destination: destination.clone(),
+    //             });
+    //
+    //             instructions.push(Instruction::Copy {
+    //                 source: destination.clone(),
+    //                 destination: destination_left_operand,
+    //             });
+    //             (instructions, destination)
+    //         }
+    //         parser::BinaryOperator::And => {
+    //             // we conclude by an end result of 0 or 1. if either expression result is zero
+    //             // we jump to the false_label where we set the end result to zero
+    //             // when both results are non-zero then instead we set the result to one and jump
+    //             // straight to the end_label
+    //             let false_label = generator::make_label("false");
+    //             let end_label = generator::make_label("end");
+    //
+    //             let (left_instructions, destination_left_operand) =
+    //                 convert_expression(*left_operand);
+    //             let left_expression_result = make_temporary();
+    //             let left_expression_result = Value::Var(left_expression_result);
+    //             let mut instructions = left_instructions;
+    //             instructions.push(Instruction::Copy {
+    //                 source: destination_left_operand,
+    //                 destination: left_expression_result.clone(),
+    //             });
+    //             instructions.push(Instruction::JumpIfZero {
+    //                 condition: left_expression_result,
+    //                 target: false_label.clone(),
+    //             });
+    //
+    //             let (right_instructions, destination_right_operand) =
+    //                 convert_expression(*right_operand);
+    //             let right_expression_result = make_temporary();
+    //             let right_expression_result = Value::Var(right_expression_result);
+    //             instructions.extend(right_instructions);
+    //             instructions.push(Instruction::Copy {
+    //                 source: destination_right_operand,
+    //                 destination: right_expression_result.clone(),
+    //             });
+    //             instructions.push(Instruction::JumpIfZero {
+    //                 condition: right_expression_result,
+    //                 target: false_label.clone(),
+    //             });
+    //
+    //             let end_result = make_temporary();
+    //             let end_result = Value::Var(end_result);
+    //
+    //             instructions.push(Instruction::Copy {
+    //                 source: Value::Constant(1),
+    //                 destination: end_result.clone(),
+    //             });
+    //
+    //             instructions.push(Instruction::Jump {
+    //                 target: end_label.clone(),
+    //             });
+    //             instructions.push(Instruction::Label {
+    //                 identifier: false_label,
+    //             });
+    //             instructions.push(Instruction::Copy {
+    //                 source: Value::Constant(0),
+    //                 destination: end_result.clone(),
+    //             });
+    //             instructions.push(Instruction::Label {
+    //                 identifier: end_label,
+    //             });
+    //
+    //             (instructions, end_result)
+    //         }
+    //         parser::BinaryOperator::Or => {
+    //             // return with an end result of 0 or 1. If either expression is non-zero
+    //             // jump to a true_label where the end result is set to 1.
+    //             // if no jump occurs the statement where the end result it set to 0, followed
+    //             // by a jump to the end-label.
+    //             let true_label = generator::make_label("true");
+    //             let end_label = generator::make_label("end");
+    //             let (left_instructions, destination_left_operand) =
+    //                 convert_expression(*left_operand);
+    //             let mut instructions = left_instructions;
+    //             let left_expression_result = make_temporary();
+    //             let left_expression_result = Value::Var(left_expression_result);
+    //             instructions.push(Instruction::Copy {
+    //                 source: destination_left_operand,
+    //                 destination: left_expression_result.clone(),
+    //             });
+    //             instructions.push(Instruction::JumpIfNotZero {
+    //                 condition: left_expression_result,
+    //                 target: true_label.clone(),
+    //             });
+    //
+    //             let (right_instructions, destination_right_operand) =
+    //                 convert_expression(*right_operand);
+    //             let right_expression_result = make_temporary();
+    //             let right_expression_result = Value::Var(right_expression_result);
+    //             instructions.extend(right_instructions);
+    //             instructions.push(Instruction::Copy {
+    //                 source: destination_right_operand,
+    //                 destination: right_expression_result.clone(),
+    //             });
+    //             instructions.push(Instruction::JumpIfNotZero {
+    //                 condition: right_expression_result,
+    //                 target: true_label.clone(),
+    //             });
+    //
+    //             let end_result = make_temporary();
+    //             let end_result = Value::Var(end_result);
+    //
+    //             instructions.push(Instruction::Copy {
+    //                 source: Value::Constant(0),
+    //                 destination: end_result.clone(),
+    //             });
+    //
+    //             instructions.push(Instruction::Jump {
+    //                 target: end_label.clone(),
+    //             });
+    //
+    //             instructions.push(Instruction::Label {
+    //                 identifier: true_label,
+    //             });
+    //             instructions.push(Instruction::Copy {
+    //                 source: Value::Constant(1),
+    //                 destination: end_result.clone(),
+    //             });
+    //             instructions.push(Instruction::Label {
+    //                 identifier: end_label,
+    //             });
+    //
+    //             (instructions, end_result)
+    //         }
+    //     },
+    //     parser::Expression::Assignment(lhs_expression, rhs_expression) => {
+    //         let (.., lvalue) = convert_expression(*lhs_expression);
+    //         let (mut instructions, rvalue) = convert_expression(*rhs_expression);
+    //         instructions.push(Instruction::Copy {
+    //             source: rvalue,
+    //             destination: lvalue.clone(),
+    //         });
+    //         (instructions, lvalue)
+    //     }
+    //     parser::Expression::Conditional(left_expression, middle_expression, right_expression) => {
+    //         let end_label: String = generator::make_label("end");
+    //         let else_label: String = generator::make_label("else");
+    //
+    //         let (mut instructions, condition_destination) = convert_expression(*left_expression);
+    //         let left_expression_result = make_temporary();
+    //         let left_expression_result = Value::Var(left_expression_result);
+    //         instructions.push(Instruction::Copy {
+    //             source: condition_destination,
+    //             destination: left_expression_result.clone(),
+    //         });
+    //         instructions.push(Instruction::JumpIfZero {
+    //             condition: left_expression_result,
+    //             target: else_label.clone(),
+    //         });
+    //         let (then_instructions, then_destination) = convert_expression(*middle_expression);
+    //         instructions.extend(then_instructions);
+    //         let middle_expression_result = make_temporary();
+    //         let middle_expression_result = Value::Var(middle_expression_result);
+    //         instructions.push(Instruction::Copy {
+    //             source: then_destination.clone(),
+    //             destination: middle_expression_result.clone(),
+    //         });
+    //         let final_result = make_temporary();
+    //         let final_result = Value::Var(final_result);
+    //         instructions.push(Instruction::Copy {
+    //             source: middle_expression_result,
+    //             destination: final_result.clone(),
+    //         });
+    //         instructions.push(Instruction::Jump {
+    //             target: end_label.clone(),
+    //         });
+    //         instructions.push(Instruction::Label {
+    //             identifier: else_label,
+    //         });
+    //         let (else_instructions, else_destination) = convert_expression(*right_expression);
+    //         instructions.extend(else_instructions);
+    //         let right_expression_result = make_temporary();
+    //         let right_expression_result = Value::Var(right_expression_result);
+    //         instructions.push(Instruction::Copy {
+    //             source: else_destination.clone(),
+    //             destination: right_expression_result.clone(),
+    //         });
+    //         instructions.push(Instruction::Copy {
+    //             source: right_expression_result,
+    //             destination: final_result.clone(),
+    //         });
+    //         instructions.push(Instruction::Label {
+    //             identifier: end_label,
+    //         });
+    //         (instructions, final_result)
+    //     }
+    //     parser::Expression::FunctionCall {
+    //         identifier,
+    //         arguments,
+    //     } => {
+    //         let mut instructions = vec![];
+    //         let mut resolved_arguments = vec![];
+    //         for argument in arguments {
+    //             let (expression_instructions, destination) = convert_expression(argument);
+    //             instructions.extend(expression_instructions);
+    //             resolved_arguments.push(destination);
+    //         }
+    //         let function_call_result = make_temporary();
+    //         let function_call_result = Value::Var(function_call_result);
+    //         instructions.push(Instruction::FunCall {
+    //             identifier,
+    //             arguments: resolved_arguments,
+    //             destination: function_call_result.clone(),
+    //         });
+    //         (instructions, function_call_result)
+    //     }
+    // }
 }
 
 fn convert_statement(statement: parser::Statement) -> Vec<Instruction> {
-    match statement {
-        parser::Statement::Return(expression) => {
-            let (mut instructions, final_destination) = convert_expression(expression);
-            instructions.push(Instruction::Return(final_destination));
-            instructions
-        }
-        parser::Statement::If {
-            condition,
-            then_statement,
-            optional_else_statement,
-        } => match optional_else_statement {
-            Some(else_statement) => {
-                let end_label: String = generator::make_label("end");
-                let else_label: String = generator::make_label("else");
-
-                let (mut instructions, condition_destination) = convert_expression(condition);
-                let condition_expression_result = make_temporary();
-                let condition_expression_result = Value::Var(condition_expression_result);
-                instructions.push(Instruction::Copy {
-                    source: condition_destination,
-                    destination: condition_expression_result.clone(),
-                });
-
-                instructions.push(Instruction::JumpIfZero {
-                    condition: condition_expression_result,
-                    target: else_label.clone(),
-                });
-
-                let then_instructions = convert_statement(*then_statement);
-                instructions.extend(then_instructions);
-                instructions.push(Instruction::Jump {
-                    target: end_label.clone(),
-                });
-                instructions.push(Instruction::Label {
-                    identifier: else_label,
-                });
-                let else_instructions = convert_statement(*else_statement);
-                instructions.extend(else_instructions);
-                instructions.push(Instruction::Label {
-                    identifier: end_label,
-                });
-                instructions
-            }
-            None => {
-                let end_label: String = generator::make_label("end");
-                let (mut instructions, condition_destination) = convert_expression(condition);
-                let right_expression_result = make_temporary();
-                let right_expression_result = Value::Var(right_expression_result);
-                instructions.push(Instruction::Copy {
-                    source: condition_destination,
-                    destination: right_expression_result.clone(),
-                });
-                instructions.push(Instruction::JumpIfZero {
-                    condition: right_expression_result,
-                    target: end_label.clone(),
-                });
-                let then_instructions = convert_statement(*then_statement);
-                instructions.extend(then_instructions);
-
-                instructions.push(Instruction::Label {
-                    identifier: end_label,
-                });
-                instructions
-            }
-        },
-        parser::Statement::Compound(block) => convert_block(block),
-        parser::Statement::Expression(expression) => {
-            let (instructions, ..) = convert_expression(expression);
-            instructions
-        }
-        parser::Statement::Goto(target) => {
-            vec![Instruction::Jump { target }]
-        }
-        parser::Statement::Label(identifier, followed_statement) => {
-            let mut instructions: Vec<Instruction> = vec![];
-            instructions.push(Instruction::Label { identifier });
-            instructions.extend(convert_statement(*followed_statement));
-
-            instructions
-        }
-        parser::Statement::Continue { label } => {
-            vec![Instruction::Jump {
-                target: format!("continue_{}", label.unwrap()),
-            }]
-        }
-        parser::Statement::Break { label } => {
-            vec![Instruction::Jump {
-                target: format!("break_{}", label.unwrap()),
-            }]
-        }
-        parser::Statement::DoWhile {
-            body,
-            condition,
-            label,
-        } => {
-            let start_label: String = generator::make_label("start");
-            let mut instructions: Vec<Instruction> = vec![];
-            instructions.push(Instruction::Label {
-                identifier: start_label.clone(),
-            });
-            let body_instructions = convert_statement(*body);
-            instructions.extend(body_instructions);
-            instructions.push(Instruction::Label {
-                identifier: format!("continue_{}", label.clone().unwrap()),
-            });
-
-            let (condition_instructions, condition_destination) = convert_expression(condition);
-            instructions.extend(condition_instructions);
-            let condition_expression_result = make_temporary();
-            let condition_expression_result = Value::Var(condition_expression_result);
-            instructions.push(Instruction::Copy {
-                source: condition_destination,
-                destination: condition_expression_result.clone(),
-            });
-            instructions.push(Instruction::JumpIfNotZero {
-                condition: condition_expression_result,
-                target: start_label.clone(),
-            });
-            instructions.push(Instruction::Label {
-                identifier: format!("break_{}", label.unwrap()),
-            });
-            instructions
-        }
-        parser::Statement::While {
-            condition,
-            body,
-            label,
-        } => {
-            let mut instructions: Vec<Instruction> = vec![];
-            instructions.push(Instruction::Label {
-                identifier: format!("continue_{}", label.clone().unwrap()),
-            });
-            let (condition_instructions, condition_destination) = convert_expression(condition);
-            instructions.extend(condition_instructions);
-            let condition_expression_result = make_temporary();
-            let condition_expression_result = Value::Var(condition_expression_result);
-            instructions.push(Instruction::Copy {
-                source: condition_destination,
-                destination: condition_expression_result.clone(),
-            });
-            instructions.push(Instruction::JumpIfZero {
-                condition: condition_expression_result,
-                target: format!("break_{}", label.clone().unwrap()),
-            });
-            let body_instructions = convert_statement(*body);
-            instructions.extend(body_instructions);
-            instructions.push(Instruction::Jump {
-                target: format!("continue_{}", label.clone().unwrap()),
-            });
-            instructions.push(Instruction::Label {
-                identifier: format!("break_{}", label.unwrap()),
-            });
-            instructions
-        }
-        parser::Statement::For {
-            init,
-            condition,
-            post,
-            body,
-            label,
-        } => {
-            let start_label: String = generator::make_label("start");
-            let mut instructions = convert_for_init(init);
-            instructions.push(Instruction::Label {
-                identifier: start_label.clone(),
-            });
-            if let Some(condition) = condition {
-                let (condition_instructions, condition_destination) = convert_expression(condition);
-                instructions.extend(condition_instructions);
-                let condition_expression_result = make_temporary();
-                let condition_expression_result = Value::Var(condition_expression_result);
-                instructions.push(Instruction::Copy {
-                    source: condition_destination,
-                    destination: condition_expression_result.clone(),
-                });
-                instructions.push(Instruction::JumpIfZero {
-                    condition: condition_expression_result,
-                    target: format!("break_{}", label.clone().unwrap()),
-                });
-            }
-            let body_instructions = convert_statement(*body);
-            instructions.extend(body_instructions);
-            instructions.push(Instruction::Label {
-                identifier: format!("continue_{}", label.clone().unwrap()),
-            });
-            if let Some(post) = post {
-                let (post_instructions, ..) = convert_expression(post);
-                instructions.extend(post_instructions);
-            }
-            instructions.push(Instruction::Jump {
-                target: start_label,
-            });
-            instructions.push(Instruction::Label {
-                identifier: format!("break_{}", label.unwrap()),
-            });
-
-            instructions
-        }
-        parser::Statement::Switch {
-            condition,
-            body,
-            cases,
-            label,
-        } => {
-            let (mut instructions, condition_destination) = convert_expression(condition);
-            let condition_expression_result = make_temporary();
-            let condition_expression_result = Value::Var(condition_expression_result);
-            instructions.push(Instruction::Copy {
-                source: condition_destination,
-                destination: condition_expression_result.clone(),
-            });
-            let mut default_instruction: Option<Instruction> = None;
-            for case in cases {
-                let parser::LabelAndMatchValue {
-                    unique_label,
-                    match_value,
-                } = case;
-                match match_value {
-                    Some(value) => {
-                        let match_value_expression_result = Value::Constant(value);
-                        let destination = Value::Var(make_temporary());
-                        instructions.push(Instruction::Binary {
-                            binary_operator: BinaryOperator::Equal,
-                            source1: condition_expression_result.clone(),
-                            source2: match_value_expression_result.clone(),
-                            destination: destination.clone(),
-                        });
-                        instructions.push(Instruction::JumpIfNotZero {
-                            condition: destination,
-                            target: unique_label,
-                        })
-                    }
-                    None => {
-                        default_instruction = Some(Instruction::Jump {
-                            target: unique_label,
-                        })
-                    }
-                }
-            }
-            if let Some(instruction) = default_instruction {
-                instructions.push(instruction);
-            }
-            instructions.push(Instruction::Jump {
-                target: format!("break_{}", label.clone().unwrap()),
-            });
-            instructions.extend(convert_statement(*body));
-            instructions.push(Instruction::Label {
-                identifier: format!("break_{}", label.clone().unwrap()),
-            });
-            instructions
-        }
-        parser::Statement::Case {
-            follow_statement,
-            label,
-            ..
-        }
-        | parser::Statement::Default {
-            follow_statement,
-            label,
-            ..
-        } => {
-            let mut instructions: Vec<Instruction> = vec![];
-            instructions.push(Instruction::Label { identifier: label });
-            instructions.extend(convert_statement(*follow_statement));
-
-            instructions
-        }
-        parser::Statement::Null => {
-            vec![]
-        }
-    }
+    vec![]
+    // match statement {
+    //     parser::Statement::Return(expression) => {
+    //         let (mut instructions, final_destination) = convert_expression(expression);
+    //         instructions.push(Instruction::Return(final_destination));
+    //         instructions
+    //     }
+    //     parser::Statement::If {
+    //         condition,
+    //         then_statement,
+    //         optional_else_statement,
+    //     } => match optional_else_statement {
+    //         Some(else_statement) => {
+    //             let end_label: String = generator::make_label("end");
+    //             let else_label: String = generator::make_label("else");
+    //
+    //             let (mut instructions, condition_destination) = convert_expression(condition);
+    //             let condition_expression_result = make_temporary();
+    //             let condition_expression_result = Value::Var(condition_expression_result);
+    //             instructions.push(Instruction::Copy {
+    //                 source: condition_destination,
+    //                 destination: condition_expression_result.clone(),
+    //             });
+    //
+    //             instructions.push(Instruction::JumpIfZero {
+    //                 condition: condition_expression_result,
+    //                 target: else_label.clone(),
+    //             });
+    //
+    //             let then_instructions = convert_statement(*then_statement);
+    //             instructions.extend(then_instructions);
+    //             instructions.push(Instruction::Jump {
+    //                 target: end_label.clone(),
+    //             });
+    //             instructions.push(Instruction::Label {
+    //                 identifier: else_label,
+    //             });
+    //             let else_instructions = convert_statement(*else_statement);
+    //             instructions.extend(else_instructions);
+    //             instructions.push(Instruction::Label {
+    //                 identifier: end_label,
+    //             });
+    //             instructions
+    //         }
+    //         None => {
+    //             let end_label: String = generator::make_label("end");
+    //             let (mut instructions, condition_destination) = convert_expression(condition);
+    //             let right_expression_result = make_temporary();
+    //             let right_expression_result = Value::Var(right_expression_result);
+    //             instructions.push(Instruction::Copy {
+    //                 source: condition_destination,
+    //                 destination: right_expression_result.clone(),
+    //             });
+    //             instructions.push(Instruction::JumpIfZero {
+    //                 condition: right_expression_result,
+    //                 target: end_label.clone(),
+    //             });
+    //             let then_instructions = convert_statement(*then_statement);
+    //             instructions.extend(then_instructions);
+    //
+    //             instructions.push(Instruction::Label {
+    //                 identifier: end_label,
+    //             });
+    //             instructions
+    //         }
+    //     },
+    //     parser::Statement::Compound(block) => convert_block(block),
+    //     parser::Statement::Expression(expression) => {
+    //         let (instructions, ..) = convert_expression(expression);
+    //         instructions
+    //     }
+    //     parser::Statement::Goto(target) => {
+    //         vec![Instruction::Jump { target }]
+    //     }
+    //     parser::Statement::Label(identifier, followed_statement) => {
+    //         let mut instructions: Vec<Instruction> = vec![];
+    //         instructions.push(Instruction::Label { identifier });
+    //         instructions.extend(convert_statement(*followed_statement));
+    //
+    //         instructions
+    //     }
+    //     parser::Statement::Continue { label } => {
+    //         vec![Instruction::Jump {
+    //             target: format!("continue_{}", label.unwrap()),
+    //         }]
+    //     }
+    //     parser::Statement::Break { label } => {
+    //         vec![Instruction::Jump {
+    //             target: format!("break_{}", label.unwrap()),
+    //         }]
+    //     }
+    //     parser::Statement::DoWhile {
+    //         body,
+    //         condition,
+    //         label,
+    //     } => {
+    //         let start_label: String = generator::make_label("start");
+    //         let mut instructions: Vec<Instruction> = vec![];
+    //         instructions.push(Instruction::Label {
+    //             identifier: start_label.clone(),
+    //         });
+    //         let body_instructions = convert_statement(*body);
+    //         instructions.extend(body_instructions);
+    //         instructions.push(Instruction::Label {
+    //             identifier: format!("continue_{}", label.clone().unwrap()),
+    //         });
+    //
+    //         let (condition_instructions, condition_destination) = convert_expression(condition);
+    //         instructions.extend(condition_instructions);
+    //         let condition_expression_result = make_temporary();
+    //         let condition_expression_result = Value::Var(condition_expression_result);
+    //         instructions.push(Instruction::Copy {
+    //             source: condition_destination,
+    //             destination: condition_expression_result.clone(),
+    //         });
+    //         instructions.push(Instruction::JumpIfNotZero {
+    //             condition: condition_expression_result,
+    //             target: start_label.clone(),
+    //         });
+    //         instructions.push(Instruction::Label {
+    //             identifier: format!("break_{}", label.unwrap()),
+    //         });
+    //         instructions
+    //     }
+    //     parser::Statement::While {
+    //         condition,
+    //         body,
+    //         label,
+    //     } => {
+    //         let mut instructions: Vec<Instruction> = vec![];
+    //         instructions.push(Instruction::Label {
+    //             identifier: format!("continue_{}", label.clone().unwrap()),
+    //         });
+    //         let (condition_instructions, condition_destination) = convert_expression(condition);
+    //         instructions.extend(condition_instructions);
+    //         let condition_expression_result = make_temporary();
+    //         let condition_expression_result = Value::Var(condition_expression_result);
+    //         instructions.push(Instruction::Copy {
+    //             source: condition_destination,
+    //             destination: condition_expression_result.clone(),
+    //         });
+    //         instructions.push(Instruction::JumpIfZero {
+    //             condition: condition_expression_result,
+    //             target: format!("break_{}", label.clone().unwrap()),
+    //         });
+    //         let body_instructions = convert_statement(*body);
+    //         instructions.extend(body_instructions);
+    //         instructions.push(Instruction::Jump {
+    //             target: format!("continue_{}", label.clone().unwrap()),
+    //         });
+    //         instructions.push(Instruction::Label {
+    //             identifier: format!("break_{}", label.unwrap()),
+    //         });
+    //         instructions
+    //     }
+    //     parser::Statement::For {
+    //         init,
+    //         condition,
+    //         post,
+    //         body,
+    //         label,
+    //     } => {
+    //         let start_label: String = generator::make_label("start");
+    //         let mut instructions = convert_for_init(init);
+    //         instructions.push(Instruction::Label {
+    //             identifier: start_label.clone(),
+    //         });
+    //         if let Some(condition) = condition {
+    //             let (condition_instructions, condition_destination) = convert_expression(condition);
+    //             instructions.extend(condition_instructions);
+    //             let condition_expression_result = make_temporary();
+    //             let condition_expression_result = Value::Var(condition_expression_result);
+    //             instructions.push(Instruction::Copy {
+    //                 source: condition_destination,
+    //                 destination: condition_expression_result.clone(),
+    //             });
+    //             instructions.push(Instruction::JumpIfZero {
+    //                 condition: condition_expression_result,
+    //                 target: format!("break_{}", label.clone().unwrap()),
+    //             });
+    //         }
+    //         let body_instructions = convert_statement(*body);
+    //         instructions.extend(body_instructions);
+    //         instructions.push(Instruction::Label {
+    //             identifier: format!("continue_{}", label.clone().unwrap()),
+    //         });
+    //         if let Some(post) = post {
+    //             let (post_instructions, ..) = convert_expression(post);
+    //             instructions.extend(post_instructions);
+    //         }
+    //         instructions.push(Instruction::Jump {
+    //             target: start_label,
+    //         });
+    //         instructions.push(Instruction::Label {
+    //             identifier: format!("break_{}", label.unwrap()),
+    //         });
+    //
+    //         instructions
+    //     }
+    //     parser::Statement::Switch {
+    //         condition,
+    //         body,
+    //         cases,
+    //         label,
+    //     } => {
+    //         let (mut instructions, condition_destination) = convert_expression(condition);
+    //         let condition_expression_result = make_temporary();
+    //         let condition_expression_result = Value::Var(condition_expression_result);
+    //         instructions.push(Instruction::Copy {
+    //             source: condition_destination,
+    //             destination: condition_expression_result.clone(),
+    //         });
+    //         let mut default_instruction: Option<Instruction> = None;
+    //         for case in cases {
+    //             let parser::LabelAndMatchValue {
+    //                 unique_label,
+    //                 match_value,
+    //             } = case;
+    //             match match_value {
+    //                 Some(value) => {
+    //                     let match_value_expression_result = Value::Constant(value);
+    //                     let destination = Value::Var(make_temporary());
+    //                     instructions.push(Instruction::Binary {
+    //                         binary_operator: BinaryOperator::Equal,
+    //                         source1: condition_expression_result.clone(),
+    //                         source2: match_value_expression_result.clone(),
+    //                         destination: destination.clone(),
+    //                     });
+    //                     instructions.push(Instruction::JumpIfNotZero {
+    //                         condition: destination,
+    //                         target: unique_label,
+    //                     })
+    //                 }
+    //                 None => {
+    //                     default_instruction = Some(Instruction::Jump {
+    //                         target: unique_label,
+    //                     })
+    //                 }
+    //             }
+    //         }
+    //         if let Some(instruction) = default_instruction {
+    //             instructions.push(instruction);
+    //         }
+    //         instructions.push(Instruction::Jump {
+    //             target: format!("break_{}", label.clone().unwrap()),
+    //         });
+    //         instructions.extend(convert_statement(*body));
+    //         instructions.push(Instruction::Label {
+    //             identifier: format!("break_{}", label.clone().unwrap()),
+    //         });
+    //         instructions
+    //     }
+    //     parser::Statement::Case {
+    //         follow_statement,
+    //         label,
+    //         ..
+    //     }
+    //     | parser::Statement::Default {
+    //         follow_statement,
+    //         label,
+    //         ..
+    //     } => {
+    //         let mut instructions: Vec<Instruction> = vec![];
+    //         instructions.push(Instruction::Label { identifier: label });
+    //         instructions.extend(convert_statement(*follow_statement));
+    //
+    //         instructions
+    //     }
+    //     parser::Statement::Null => {
+    //         vec![]
+    //     }
+    // }
 }
 
 fn convert_variable_declaration(
     variable_declaration: parser::VariableDeclaration,
 ) -> Vec<Instruction> {
-    let mut tacky_instructions: Vec<Instruction> = vec![];
-    let parser::VariableDeclaration {
-        identifier,
-        init,
-        variable_type,
-        storage_class,
-    } = variable_declaration;
-    if storage_class.is_none()
-        && let Some(unpacked_init) = init
-    {
-        let assignment_expression = parser::Expression::Assignment(
-            Box::new(parser::Expression::Var {
-                identifier: identifier.clone(),
-            }),
-            Box::new(unpacked_init),
-        );
-        let (instructions, ..) = convert_expression(assignment_expression);
-        tacky_instructions.extend(instructions);
-    }
-    tacky_instructions
+    vec![]
+    // let mut tacky_instructions: Vec<Instruction> = vec![];
+    // let parser::VariableDeclaration {
+    //     identifier,
+    //     init,
+    //     variable_type,
+    //     storage_class,
+    // } = variable_declaration;
+    // if storage_class.is_none()
+    //     && let Some(unpacked_init) = init
+    // {
+    //     let assignment_expression = parser::Expression::Assignment(
+    //         Box::new(parser::Expression::Var {
+    //             identifier: identifier.clone(),
+    //         }),
+    //         Box::new(unpacked_init),
+    //     );
+    //     let (instructions, ..) = convert_expression(assignment_expression);
+    //     tacky_instructions.extend(instructions);
+    // }
+    // tacky_instructions
 }
 
 fn convert_declaration(declaration: parser::Declaration) -> Vec<Instruction> {
@@ -852,21 +856,22 @@ fn convert_declaration(declaration: parser::Declaration) -> Vec<Instruction> {
 }
 
 fn convert_for_init(for_init: parser::ForInit) -> Vec<Instruction> {
-    let mut tacky_instructions: Vec<Instruction> = vec![];
-    match for_init {
-        parser::ForInit::InitialDeclaration(variable_declaration) => {
-            let instructions = convert_variable_declaration(variable_declaration);
-            tacky_instructions.extend(instructions);
-        }
-        parser::ForInit::InitialOptionalExpression(optional_expression) => {
-            if let Some(expression) = optional_expression {
-                let (instructions, ..) = convert_expression(expression);
-                tacky_instructions.extend(instructions);
-            }
-        }
-    }
-
-    tacky_instructions
+    vec![]
+    // let mut tacky_instructions: Vec<Instruction> = vec![];
+    // match for_init {
+    //     parser::ForInit::InitialDeclaration(variable_declaration) => {
+    //         let instructions = convert_variable_declaration(variable_declaration);
+    //         tacky_instructions.extend(instructions);
+    //     }
+    //     parser::ForInit::InitialOptionalExpression(optional_expression) => {
+    //         if let Some(expression) = optional_expression {
+    //             let (instructions, ..) = convert_expression(expression);
+    //             tacky_instructions.extend(instructions);
+    //         }
+    //     }
+    // }
+    //
+    // tacky_instructions
 }
 
 fn convert_block(block: parser::Block) -> Vec<Instruction> {
