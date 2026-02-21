@@ -512,19 +512,19 @@ fn type_check_expression(
     symbol_table: &mut HashMap<String, symbol_table::Symbol>,
 ) -> anyhow::Result<parser::TypedExpression> {
     match typed_expression.expression {
-        parser::Expression::Constant(constant) => Ok(parser::TypedExpression {
+        parser::Expression::Constant(ref constant) => Ok(parser::TypedExpression {
             expression_type: match constant {
                 Constant::ConstInt(_) => Type::Int,
                 Constant::ConstLong(_) => Type::Long,
             },
             expression: typed_expression.expression,
         }),
-        parser::Expression::Var { identifier } => {
-            if matches!(symbol_table[&identifier].symbol_type, Type::FuncType { .. }) {
+        parser::Expression::Var { ref identifier } => {
+            if matches!(symbol_table[identifier].symbol_type, Type::FuncType { .. }) {
                 bail!("Function name used as a variable!");
             }
             Ok(parser::TypedExpression {
-                expression_type: symbol_table[&identifier].symbol_type,
+                expression_type: symbol_table[identifier].symbol_type.clone(),
                 expression: typed_expression.expression,
             })
         }
@@ -535,7 +535,7 @@ fn type_check_expression(
             let typed_inner_expression = type_check_expression(*inner_expression, symbol_table)
                 .context("type checking cast expression")?;
             Ok(parser::TypedExpression {
-                expression_type: target_type,
+                expression_type: target_type.clone(),
                 expression: parser::Expression::Cast {
                     target_type,
                     expression: Box::new(typed_inner_expression),
@@ -547,7 +547,7 @@ fn type_check_expression(
                 .context("type checking unary expression")?;
             let expression_type = match unary_operator {
                 parser::UnaryOperator::Not => Type::Int,
-                _ => typed_inner_expression.expression_type,
+                _ => typed_inner_expression.expression_type.clone(),
             };
             Ok(parser::TypedExpression {
                 expression_type,
@@ -586,7 +586,7 @@ fn type_check_expression(
                     let promoted_left_operand = typed_left_operand.cast_to(&common_type);
                     let promoted_right_operand = typed_right_operand.cast_to(&common_type);
                     let promoted_binary_expression = parser::Expression::BinaryOperation {
-                        binary_operator,
+                        binary_operator: binary_operator.clone(),
                         left_operand: Box::new(promoted_left_operand),
                         right_operand: Box::new(promoted_right_operand),
                     };
@@ -671,7 +671,9 @@ fn type_check_expression(
                     },
                 })
             }
-            Type::Undefined => bail!("A symbol ended up in the symbol table without a type!"),
+            Type::Undefined => {
+                unreachable!("A symbol ended up in the symbol table without a type!")
+            }
         },
     }
 }

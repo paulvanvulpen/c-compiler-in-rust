@@ -236,6 +236,7 @@ pub enum UnaryOperator {
     PostfixIncrement,
 }
 
+#[derive(Clone)]
 pub enum BinaryOperator {
     Add,
     Subtract,
