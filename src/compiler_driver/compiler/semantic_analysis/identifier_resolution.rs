@@ -381,8 +381,13 @@ fn resolve_expression(
                 return Err(anyhow!("invalid lvalue {}", (*left).visualize(0)));
             }
             Ok(parser::Expression::Assignment(
-                Box::new(resolve_expression(*left, identifier_map)?),
-                Box::new(resolve_expression(*right, identifier_map)?),
+                Box::new(
+                    resolve_expression(*left, identifier_map).context("resolving an expression")?,
+                ),
+                Box::new(
+                    resolve_expression(*right, identifier_map)
+                        .context("resolving an expression")?,
+                ),
             )
             .into())
         }

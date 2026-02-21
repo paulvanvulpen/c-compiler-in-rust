@@ -372,9 +372,8 @@ fn type_check_block(
         .map(|block_item| {
             type_check_block_item(block_item, symbol_table, enclosing_function_return_type)
                 .context("type checking a block")
-                .unwrap()
         })
-        .collect();
+        .collect::<anyhow::Result<_>>()?;
 
     Ok(parser::Block::Block(block))
 }
@@ -785,34 +784,30 @@ fn type_check_expression(
 
 pub fn analyse(
     declarations: Vec<parser::Declaration>,
-) -> (
+) -> anyhow::Result<(
     Vec<parser::Declaration>,
     HashMap<String, symbol_table::Symbol>,
-) {
+)> {
     let mut symbol_table: HashMap<String, symbol_table::Symbol> = HashMap::new();
-    (
-        declarations
-            .into_iter()
-            .map(|declaration| match declaration {
-                parser::Declaration::VariableDeclaration(variable_declaration) => {
-                    parser::Declaration::VariableDeclaration(
-                        type_check_file_scope_variable_declaration(
-                            variable_declaration,
-                            &mut symbol_table,
-                        )
-                        .context("Type checking a file scope variable declaration")
-                        .unwrap(),
-                    )
-                }
-                parser::Declaration::FunctionDeclaration(function_declaration) => {
-                    parser::Declaration::FunctionDeclaration(
-                        type_check_function_declaration(function_declaration, &mut symbol_table)
-                            .context("type checking a function")
-                            .unwrap(),
-                    )
-                }
-            })
-            .collect(),
-        symbol_table,
-    )
+    let resolved_declarations: Vec<_> = declarations
+        .into_iter()
+        .map(|declaration| match declaration {
+            parser::Declaration::VariableDeclaration(variable_declaration) => {
+                let checked = type_check_file_scope_variable_declaration(
+                    variable_declaration,
+                    &mut symbol_table,
+                )
+                .context("Type checking a file scope variable declaration")?;
+                Ok(parser::Declaration::VariableDeclaration(checked))
+            }
+            parser::Declaration::FunctionDeclaration(function_declaration) => {
+                let checked =
+                    type_check_function_declaration(function_declaration, &mut symbol_table)
+                        .context("type checking a function")?;
+                Ok(parser::Declaration::FunctionDeclaration(checked))
+            }
+        })
+        .collect::<anyhow::Result<_>>()?;
+
+    Ok((resolved_declarations, symbol_table))
 }

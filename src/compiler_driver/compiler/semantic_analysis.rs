@@ -17,7 +17,8 @@ pub fn run_semantic_analysis(
 
     declarations = identifier_resolution::analyse(declarations);
     let symbol_table;
-    (declarations, symbol_table) = type_checking::analyse(declarations);
+    (declarations, symbol_table) =
+        type_checking::analyse(declarations).context("Running semantic analysis")?;
 
     for declaration in declarations.iter_mut() {
         if let parser::Declaration::FunctionDeclaration(function) = declaration {
