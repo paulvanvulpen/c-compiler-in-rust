@@ -615,7 +615,7 @@ fn type_check_expression(
             let converted_right_operand =
                 typed_right_operand.cast_to(&typed_left_operand.expression_type);
             Ok(parser::TypedExpression {
-                expression_type: typed_left_operand.expression_type,
+                expression_type: typed_left_operand.expression_type.clone(),
                 expression: parser::Expression::Assignment(
                     Box::new(typed_left_operand),
                     Box::new(converted_right_operand),
@@ -630,7 +630,7 @@ fn type_check_expression(
                 .expression_type
                 .common_with(&typed_right_operand.expression_type)
                 .context("type_checking an expression")?;
-            let promoted_middle_operand = typed_left_operand.cast_to(&common_type);
+            let promoted_middle_operand = typed_middle_operand.cast_to(&common_type);
             let promoted_right_operand = typed_right_operand.cast_to(&common_type);
             Ok(parser::TypedExpression {
                 expression_type: common_type,
@@ -644,30 +644,35 @@ fn type_check_expression(
         parser::Expression::FunctionCall {
             identifier,
             arguments,
-        } => {
-            if matches!(
-                symbol_table[&identifier].symbol_type,
-                symbol_table::Type::Int | symbol_table::Type::Long
-            ) {
-                bail!("Variable name used as a function!");
+        } => match symbol_table[&identifier].symbol_type.clone() {
+            Type::Int | Type::Long => bail!("Variable name used as a function!"),
+            Type::FuncType {
+                parameter_types,
+                return_type,
+            } => {
+                if parameter_types.len() == arguments.len() {
+                    bail!("Function called with the wrong number of arguments");
+                }
+                let typed_arguments = parameter_types
+                    .iter()
+                    .zip(arguments.into_iter())
+                    .map(|(parameter_type, argument)| {
+                        let typed_argument = type_check_expression(argument, symbol_table)
+                            .context("type checking cast expression")
+                            .unwrap();
+                        typed_argument.cast_to(&parameter_type)
+                    })
+                    .collect();
+                Ok(parser::TypedExpression {
+                    expression_type: *return_type.clone(),
+                    expression: parser::Expression::FunctionCall {
+                        identifier,
+                        arguments: typed_arguments,
+                    },
+                })
             }
-            // todo!("I just cheated here to make it compile") it's no longer enough to compare
-            //  argument count, we need to check the types and the return types.
-            if !matches!(
-                &symbol_table[identifier].symbol_type,
-                symbol_table::Type::FuncType {
-                    parameter_types,
-                    ..
-                } if parameter_types.len() == arguments.len()
-            ) {
-                bail!("Function called with the wrong number of arguments");
-            }
-            for argument in arguments {
-                type_check_expression(argument, symbol_table)
-                    .context("type checking an expression")?
-            }
-            Ok(())
-        }
+            Type::Undefined => bail!("A symbol ended up in the symbol table without a type!"),
+        },
     }
 }
 
