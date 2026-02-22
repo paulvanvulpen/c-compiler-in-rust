@@ -754,7 +754,7 @@ fn type_check_expression(
                 parameter_types,
                 return_type,
             } => {
-                if parameter_types.len() == arguments.len() {
+                if parameter_types.len() != arguments.len() {
                     bail!("Function called with the wrong number of arguments");
                 }
                 let typed_arguments = parameter_types
