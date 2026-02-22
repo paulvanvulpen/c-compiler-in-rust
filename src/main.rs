@@ -41,7 +41,9 @@ struct Args {
 
 /// A rust-based C compiler.
 fn main() -> Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    let mut builder = env_logger::Builder::from_env(Env::default().default_filter_or("info"));
+    builder.target(env_logger::Target::Stdout);
+    builder.init();
 
     let args = Args::parse();
     compiler_driver::run(&args)?;
