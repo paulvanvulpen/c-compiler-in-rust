@@ -7,8 +7,10 @@ use std::collections::HashMap;
 // Implementation AST Nodes in Zephyr Abstract Syntax Description Language (ASDL)
 // program = Program (top_level*)
 // top_level = Function(identifier, bool global, identifier* params, instruction* body)
-//      | StaticVariable(identifier, bool global, int init)
+//      | StaticVariable(identifier, bool global, type t, static_init init)
 // instruction = Return(val)
+//      | SignExtend(val src, val dst)
+//      | Truncate(val src, val dst)
 //      | Unary(unary_operator, val src, val dst)
 //      | Binary(binary_operator, val src1, val src2, val dst)
 //      | Copy(val src, val dst)
@@ -17,7 +19,7 @@ use std::collections::HashMap;
 //      | JumpIfNotZero(val condition, identifier target)
 //      | Label(identifier)
 //      | FunCall(identifier fun_name, val* args, val dst)
-// val = Constant(int) | Var(identifier)
+// val = Constant(const) | Var(identifier)
 // unary_operator = Complement | Negate | Not
 // binary_operator = Add | Subtract | Multiply | Divide | Remainder | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual
 pub enum TackyAbstractSyntaxTree {
@@ -41,11 +43,20 @@ pub enum TopLevel {
 pub struct StaticVariable {
     pub identifier: String,
     pub is_globally_visible: bool,
-    pub init: usize,
+    pub variable_type: symbol_table::Type,
+    pub init: symbol_table::StaticInit,
 }
 
 pub enum Instruction {
     Return(Value),
+    SignExtend {
+        source: Value,
+        destination: Value,
+    },
+    Truncate {
+        source: Value,
+        destination: Value,
+    },
     Unary {
         unary_operator: UnaryOperator,
         source: Value,
@@ -115,7 +126,7 @@ pub enum BinaryOperator {
 
 #[derive(Clone)]
 pub enum Value {
-    Constant(usize),
+    Constant(symbol_table::Constant),
     Var(String),
 }
 
@@ -944,25 +955,29 @@ fn convert_symbols(symbol_table: &HashMap<String, symbol_table::Symbol>) -> Vec<
     symbol_table
         .into_iter()
         .filter_map(
-            |(identifier, symbol_state)| match &symbol_state.identifier_attributes {
+            |(identifier, symbol)| match &symbol.identifier_attributes {
                 symbol_table::IdentifierAttributes::StaticStorageAttribute {
                     init,
                     is_globally_visible,
                 } =>
                     match init {
-                    symbol_table::InitialValue::Initial(constant) => todo!("I just made up the match constant stuff, check it properly once we work with tacky"),
-                    //     Some(StaticVariable {
-                    //     identifier: identifier.clone(),
-                    //     is_globally_visible: *is_globally_visible,
-                    //     init: match constant {
-                    //         symbol_table::Constant::ConstInt( value32 ) => *value32 as usize,
-                    //         symbol_table::Constant::ConstLong(value64) => *value64 as usize,
-                    //     },
-                    // }),
+                    symbol_table::InitialValue::Initial(constant) =>
+                        Some(StaticVariable {
+                        identifier: identifier.clone(),
+                        is_globally_visible: *is_globally_visible,
+                        variable_type: symbol.symbol_type.clone(),
+                        init: constant.clone()
+                    }),
                     symbol_table::InitialValue::Tentative => Some(StaticVariable {
                         identifier: identifier.clone(),
                         is_globally_visible: *is_globally_visible,
-                        init: 0,
+                        variable_type: symbol.symbol_type.clone(),
+                        init: match &symbol.symbol_type {
+                            symbol_table::Type::Int => symbol_table::StaticInit::IntInit(0),
+                            symbol_table::Type::Long => symbol_table::StaticInit::LongInit(0),
+                            symbol_table::Type::Undefined |
+                            symbol_table::Type::FuncType { .. } => unreachable!("Every symbol has a type before being processed by tacky and cannot have been defined as a function type.")
+                        },
                     }),
                     symbol_table::InitialValue::NoInitializer => None,
                 },
