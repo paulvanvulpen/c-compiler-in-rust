@@ -174,7 +174,7 @@ pub enum Statement {
         label: Option<String>,
     },
     Case {
-        match_value: usize,
+        match_value: symbol_table::Constant,
         follow_statement: Box<Statement>,
         break_label: Option<String>,
         label: String,
@@ -414,7 +414,7 @@ fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [T
                         parameters,
                         body: None,
                         function_type: symbol_table::Type::FuncType {
-                            parameter_types: parameter_types,
+                            parameter_types,
                             return_type: Box::new(variable_type_specifier_or_return_type_specifier),
                         },
                         storage_class,
@@ -430,7 +430,7 @@ fn parse_declaration(lexer_tokens: &mut [Token]) -> Result<(Declaration, &mut [T
                             parameters,
                             body: Some(body),
                             function_type: symbol_table::Type::FuncType {
-                                parameter_types: parameter_types,
+                                parameter_types,
                                 return_type: Box::new(
                                     variable_type_specifier_or_return_type_specifier,
                                 ),
@@ -746,8 +746,9 @@ fn parse_statement(lexer_tokens: &mut [Token]) -> Result<(Statement, &mut [Token
         }
         Token::Case => {
             let lexer_tokens = &mut lexer_tokens[1..];
-            let match_value: usize = match &lexer_tokens[0] {
-                Token::IntegerConstant(x) | Token::LongIntegerConstant(x) => *x,
+            let match_value = match &lexer_tokens[0] {
+                Token::IntegerConstant(x) => symbol_table::Constant::ConstInt(*x as i32),
+                Token::LongIntegerConstant(x) => symbol_table::Constant::ConstLong(*x as i64),
                 _ => unreachable!("earlier check already guarantees this is a constant"),
             };
             let lexer_tokens = expect(Token::Colon, &mut lexer_tokens[1..])

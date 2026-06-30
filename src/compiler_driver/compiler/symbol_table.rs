@@ -1,5 +1,7 @@
 use anyhow::bail;
 
+mod visualize;
+
 #[derive(Debug, PartialEq, Clone, Default)]
 pub enum Type {
     #[default]
