@@ -44,7 +44,7 @@ fn resolve_statement(
                     label.clone(),
                     parser::LabelAndMatchValue {
                         unique_label: unique_label.clone(),
-                        match_value: Some(match_value),
+                        match_value: Some(match_value.clone()),
                     },
                 );
                 Ok(parser::Statement::Case {

@@ -788,16 +788,14 @@ fn convert_statement(statement: parser::Statement) -> vec<instruction> {
                     unique_label,
                     match_value,
                 } = case;
+
                 match match_value {
                     Some(value) => {
-                        let match_value_expression_result =
-                            Value::Constant(symbol_table::Constant::ConstInt(value as i32));
-                        todo("maybe decide here whether it should be i32 or i64 based on the size");
                         let destination = Value::Var(make_temporary());
                         instructions.push(Instruction::Binary {
                             binary_operator: BinaryOperator::Equal,
                             source1: condition_expression_result.clone(),
-                            source2: match_value_expression_result.clone(),
+                            source2: Value::Constant(value),
                             destination: destination.clone(),
                         });
                         instructions.push(Instruction::JumpIfNotZero {

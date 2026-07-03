@@ -129,7 +129,7 @@ impl Default for BlockItem {
 
 pub struct LabelAndMatchValue {
     pub unique_label: String,
-    pub match_value: Option<usize>,
+    pub match_value: Option<symbol_table::Constant>,
 }
 
 #[derive(Default)]
