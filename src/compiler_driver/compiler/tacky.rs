@@ -888,22 +888,21 @@ fn convert_declaration(declaration: parser::Declaration) -> Vec<Instruction> {
 }
 
 fn convert_for_init(for_init: parser::ForInit) -> Vec<Instruction> {
-    vec![]
-    // let mut tacky_instructions: Vec<Instruction> = vec![];
-    // match for_init {
-    //     parser::ForInit::InitialDeclaration(variable_declaration) => {
-    //         let instructions = convert_variable_declaration(variable_declaration);
-    //         tacky_instructions.extend(instructions);
-    //     }
-    //     parser::ForInit::InitialOptionalExpression(optional_expression) => {
-    //         if let Some(expression) = optional_expression {
-    //             let (instructions, ..) = convert_expression(expression);
-    //             tacky_instructions.extend(instructions);
-    //         }
-    //     }
-    // }
-    //
-    // tacky_instructions
+    let mut tacky_instructions: Vec<Instruction> = vec![];
+    match for_init {
+        parser::ForInit::InitialDeclaration(variable_declaration) => {
+            let instructions = convert_variable_declaration(variable_declaration);
+            tacky_instructions.extend(instructions);
+        }
+        parser::ForInit::InitialOptionalExpression(optional_expression) => {
+            if let Some(expression) = optional_expression {
+                let (instructions, ..) = convert_expression(expression);
+                tacky_instructions.extend(instructions);
+            }
+        }
+    }
+
+    tacky_instructions
 }
 
 fn convert_block(block: parser::Block) -> Vec<Instruction> {
@@ -943,7 +942,9 @@ fn convert_file_scope_declaration(
 
                 // expected behavior for main when not explicitly specified
                 // and handles missing return statement. Execution of this line is bypassed when a return statement is already given
-                tacky_body.push(Instruction::Return(Value::Constant(0)));
+                tacky_body.push(Instruction::Return(Value::Constant(
+                    symbol_table::Constant::default(),
+                )));
 
                 Some(TopLevel::Function {
                     identifier: identifier.clone(),
