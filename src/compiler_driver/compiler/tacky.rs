@@ -847,27 +847,33 @@ fn convert_statement(statement: parser::Statement) -> vec<instruction> {
 fn convert_variable_declaration(
     variable_declaration: parser::VariableDeclaration,
 ) -> Vec<Instruction> {
-    vec![]
-    // let mut tacky_instructions: Vec<Instruction> = vec![];
-    // let parser::VariableDeclaration {
-    //     identifier,
-    //     init,
-    //     variable_type,
-    //     storage_class,
-    // } = variable_declaration;
-    // if storage_class.is_none()
-    //     && let Some(unpacked_init) = init
-    // {
-    //     let assignment_expression = parser::Expression::Assignment(
-    //         Box::new(parser::Expression::Var {
-    //             identifier: identifier.clone(),
-    //         }),
-    //         Box::new(unpacked_init),
-    //     );
-    //     let (instructions, ..) = convert_expression(assignment_expression);
-    //     tacky_instructions.extend(instructions);
-    // }
-    // tacky_instructions
+    let mut tacky_instructions: Vec<Instruction> = vec![];
+    let parser::VariableDeclaration {
+        identifier,
+        init,
+        variable_type,
+        storage_class,
+    } = variable_declaration;
+    if storage_class.is_none()
+        && let Some(unpacked_init) = init
+    {
+        let typed_expression = parser::TypedExpression {
+            expression_type: variable_type.clone(),
+            expression: parser::Expression::Var {
+                identifier: identifier.clone(),
+            },
+        };
+        let assignment_expression = parser::TypedExpression {
+            expression_type: variable_type,
+            expression: parser::Expression::Assignment(
+                Box::new(typed_expression),
+                Box::new(unpacked_init),
+            ),
+        };
+        let (instructions, ..) = convert_expression(assignment_expression);
+        tacky_instructions.extend(instructions);
+    }
+    tacky_instructions
 }
 
 fn convert_declaration(declaration: parser::Declaration) -> Vec<Instruction> {
